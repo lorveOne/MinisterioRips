@@ -1,0 +1,35 @@
+{
+  "name": "microservicio-rips-minsalud",
+  "version": "1.0.0",
+  "description": "Microservicio para envío automático de archivos RIPS al Ministerio de Salud de Colombia",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "manual": "cross-env MODO_EJECUCION=manual node index.js",
+    "continuo": "cross-env MODO_EJECUCION=continuo node index.js",
+    "programado": "cross-env MODO_EJECUCION=programado node index.js",
+    "test": "node -e \"console.log('Prueba de configuración...'); require('./MicroservicioRIPS'); console.log('✅ Configuración correcta');\""
+  },
+  "keywords": [
+    "rips",
+    "minsalud",
+    "colombia",
+    "microservicio",
+    "salud",
+    "sispro"
+  ],
+  "author": "LorveOne",
+  "license": "MIT",
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
