@@ -1,0 +1,14 @@
+version: '3.9'
+
+services:
+  microservicio:
+    build: .
+    volumes:
+      - /c/Users/USER/Desktop/Json_enviar/porEnviar:/app/porEnviar
+      - /c/Users/USER/Desktop/Json_enviar/procesados:/app/procesados
+      - /c/Users/USER/Desktop/Json_enviar/rechazados:/app/rechazados
+    environment:
+      - NODE_ENV=development
+      - MODO_EJECUCION=continuo
+    ports:
+      - "3000:3000"
