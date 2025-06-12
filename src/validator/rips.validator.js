@@ -11,7 +11,7 @@ class ValidadorRIPS {
                     obligatorios: ['tipoDocumentoIdentificacion', 'numDocumentoIdentificacion', 'tipoUsuario', 'fechaNacimiento', 'codSexo', 'consecutivo', 'servicios'],
                     servicios: {
                         procedimientos: ['codPrestador', 'fechaInicioAtencion', 'codProcedimiento', 'vrServicio', 'consecutivo'],
-                        consultas: ['codPrestador', 'fechaInicioAtencion', 'codProcedimiento', 'vrServicio', 'consecutivo'],
+                        consultas: ['codPrestador', 'fechaInicioAtencion', 'vrServicio', 'consecutivo'],
                         medicamentos: ['codPrestador', 'fechaDispensAdmon', 'codTecnologiaSalud', 'vrServicio', 'consecutivo']
                     }
                 }
@@ -37,7 +37,7 @@ class ValidadorRIPS {
      * Valida la estructura del JSON RIPS
      */
     validarEstructuraRIPS(json) {
-        try {
+        try {            
             // Verificar estructura principal
             if (!json.rips) {
                 return { valido: false, error: 'Falta objeto "rips"' };
@@ -225,8 +225,12 @@ class ValidadorRIPS {
 }
 
 // Uso
-async function validarRIPS() {
-    const validador = new ValidadorRIPS('C:\\Users\\USER\\Desktop\\Json_enviar\\porEnviar');
+async function validarRIPS(jsonPath) {
+    if (!jsonPath) {
+        console.error('❌ Ruta de carpeta no especificada');
+        return;
+    }
+    const validador = new ValidadorRIPS(jsonPath);
     const resultado = await validador.procesar();
     
     if (resultado.error) {

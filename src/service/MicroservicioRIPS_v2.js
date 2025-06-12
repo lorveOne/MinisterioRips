@@ -43,26 +43,29 @@ class MicroservicioRIPS {
                 return archivosAjustados;
             }
 
-            console.log(`📁 Encontradas ${carpetasDirectorios.length} carpetas para revisar`);
+            console.log(`📁 Encontradas ${carpetasDirectorios.length} carpetas para procesar`);
 
             for (const dirent of carpetasDirectorios) {
                 const nombreCarpeta = dirent.name;
                 
                 // Saltar carpetas que ya son de procesamiento (evitar procesar porEnviar, procesados, rechazados)
                 if (['porEnviar', 'procesados', 'rechazados'].includes(nombreCarpeta) || 
-                    nombreCarpeta.endsWith('_ajustada') || 
-                    nombreCarpeta.endsWith('_procesada')) {
+                    nombreCarpeta.endsWith('_ajustada')) {
                     continue;
                 }
 
                 const carpetaCompleta = path.join(this.rutaBaseCarpetas, nombreCarpeta);
                 const nombreArchivoAjustado = `${nombreCarpeta}_ajustado.json`;
+                const rutaArchivoEnPorEnviar = path.join(this.rutaArchivosPorEnviar, nombreArchivoAjustado);
 
-                // Verificar si esta carpeta ya fue procesada anteriormente
-                const yaFueProcesada = await this.verificarCarpetaProcesada(nombreCarpeta);
-                if (yaFueProcesada) {
-                    console.log(`⏩ Carpeta ${nombreCarpeta} ya fue procesada anteriormente, se omite`);
+                // Verificar si ya existe el archivo ajustado en porEnviar
+                try {
+                    await fs.access(rutaArchivoEnPorEnviar);
+                    console.log(`⏩ Ya ajustado en porEnviar: ${nombreArchivoAjustado}, se omite`);
+                    archivosAjustados.push(nombreArchivoAjustado);
                     continue;
+                } catch {
+                    // El archivo no existe, proceder con el ajuste
                 }
 
                 try {
@@ -72,8 +75,6 @@ class MicroservicioRIPS {
 
                     if (!jsonFile || !xmlFile) {
                         console.warn(`⚠️ Archivos faltantes en carpeta ${nombreCarpeta}`);
-                        // Marcar como procesada para no intentarlo de nuevo
-                        await this.marcarCarpetaComoProcesada(nombreCarpeta, 'error_archivos_faltantes');
                         continue;
                     }
 
@@ -96,19 +97,13 @@ class MicroservicioRIPS {
                     console.log(`🔧 Ajustando carpeta: ${nombreCarpeta}`);
                     
                     // Escribir directamente en la carpeta porEnviar
-                    const rutaArchivoEnPorEnviar = path.join(this.rutaArchivosPorEnviar, nombreArchivoAjustado);
                     await fs.writeFile(rutaArchivoEnPorEnviar, JSON.stringify(nuevoJson, null, 2), 'utf8');
 
                     console.log(`✅ Ajustado y guardado en porEnviar: ${nombreArchivoAjustado}`);
                     archivosAjustados.push(nombreArchivoAjustado);
 
-                    // Marcar la carpeta como procesada
-                    await this.marcarCarpetaComoProcesada(nombreCarpeta, 'ajustado_exitosamente');
-
                 } catch (errorInterno) {
                     console.error(`❌ Error en carpeta ${nombreCarpeta}:`, errorInterno.message);
-                    // Marcar como procesada con error para no intentarlo de nuevo
-                    await this.marcarCarpetaComoProcesada(nombreCarpeta, `error: ${errorInterno.message}`);
                 }
             }
 
@@ -118,49 +113,6 @@ class MicroservicioRIPS {
         } catch (errorGeneral) {
             console.error('❌ Error al procesar carpetas:', errorGeneral.message);
             throw errorGeneral;
-        }
-    }
-
-    /**
-     * Verificar si una carpeta ya fue procesada anteriormente
-     */
-    async verificarCarpetaProcesada(nombreCarpeta) {
-        try {
-            const archivoControl = path.join(this.rutaBaseCarpetas, '.carpetas_procesadas.json');
-            const contenido = await fs.readFile(archivoControl, 'utf8');
-            const carpetasProcesadas = JSON.parse(contenido);
-            
-            return carpetasProcesadas.hasOwnProperty(nombreCarpeta);
-        } catch (error) {
-            // Si no existe el archivo de control, significa que no hay carpetas procesadas
-            return false;
-        }
-    }
-
-    /**
-     * Marcar una carpeta como procesada
-     */
-    async marcarCarpetaComoProcesada(nombreCarpeta, estado) {
-        try {
-            const archivoControl = path.join(this.rutaBaseCarpetas, '.carpetas_procesadas.json');
-            
-            let carpetasProcesadas = {};
-            try {
-                const contenido = await fs.readFile(archivoControl, 'utf8');
-                carpetasProcesadas = JSON.parse(contenido);
-            } catch (error) {
-                // Si no existe el archivo, se crea uno nuevo
-            }
-            
-            carpetasProcesadas[nombreCarpeta] = {
-                fechaProcesamiento: new Date().toISOString(),
-                estado: estado
-            };
-            
-            await fs.writeFile(archivoControl, JSON.stringify(carpetasProcesadas, null, 2), 'utf8');
-            
-        } catch (error) {
-            console.log(`⚠️ No se pudo marcar carpeta ${nombreCarpeta} como procesada: ${error.message}`);
         }
     }
 
@@ -197,11 +149,10 @@ class MicroservicioRIPS {
             const archivosJSON = archivos.filter(archivo => archivo.toLowerCase().endsWith('.json'));
             
             if (archivosJSON.length === 0) {
-                console.log('ℹ️ No se encontraron archivos JSON en porEnviar');
-                return [];
+                throw new Error('No se encontraron archivos JSON');
             }
             
-            console.log(`📄 Encontrados ${archivosJSON.length} archivos JSON en porEnviar`);
+            console.log(`📄 Encontrados ${archivosJSON.length} archivos JSON`);
             
             // Validar estructura de cada archivo
             const archivosValidos = [];
@@ -212,8 +163,6 @@ class MicroservicioRIPS {
                     console.log(`✅ ${archivo} - Válido`);
                 } else {
                     console.log(`❌ ${archivo} - ${esValido.error}`);
-                    // Mover archivo inválido a rechazados
-                    await this.moverArchivo(archivo, 'rechazados', `Validación fallida: ${esValido.error}`);
                 }
             }
             
@@ -221,7 +170,7 @@ class MicroservicioRIPS {
             
         } catch (error) {
             console.log(`❌ Error validando archivos: ${error.message}`);
-            return [];
+            throw error;
         }
     }
 
@@ -482,23 +431,14 @@ class MicroservicioRIPS {
             
             // 1. Ajustar carpetas JSON y guardar directamente en porEnviar
             const archivosAjustados = await this.ajustarCarpetasJson();
-            console.log(`📋 Archivos ajustados en esta ejecución: ${archivosAjustados.length}`);
             
             // 2. Validar archivos (ahora incluye tanto los ajustados como cualquier otro que esté en porEnviar)
             const archivosValidos = await this.validarArchivos();
             
             if (archivosValidos.length === 0) {
                 console.log('ℹ️ No hay archivos válidos para enviar');
-                console.log('📁 Estado actual:');
-                console.log(`   - Archivos ajustados: ${archivosAjustados.length}`);
-                console.log(`   - Archivos válidos en porEnviar: ${archivosValidos.length}`);
-                
-                // Verificar si hay archivos en las otras carpetas para dar contexto
-                await this.mostrarEstadoCarpetas();
                 return;
             }
-
-            console.log(`✅ Se encontraron ${archivosValidos.length} archivos válidos para enviar`);
 
             // 3. Hacer login
             await this.loginSISPRO();
@@ -506,78 +446,21 @@ class MicroservicioRIPS {
             // 4. Enviar cada archivo válido
             console.log(`\n📤 Enviando ${archivosValidos.length} archivos...`);
             
-            let archivosEnviados = 0;
-            let archivosRechazados = 0;
-            
             for (const archivo of archivosValidos) {
                 try {
                     await this.enviarRIPS(archivo);
-                    archivosEnviados++;
                     
                     // Esperar un poco entre envíos
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error) {
                     console.log(`❌ Error con ${archivo}, continuando con el siguiente...`);
-                    archivosRechazados++;
                 }
             }
 
             console.log('\n✅ Proceso completado');
-            console.log(`📊 Resumen:`);
-            console.log(`   - Archivos enviados exitosamente: ${archivosEnviados}`);
-            console.log(`   - Archivos rechazados: ${archivosRechazados}`);
-            console.log(`   - Total procesados: ${archivosEnviados + archivosRechazados}`);
             
         } catch (error) {
             console.log(`❌ Error general: ${error.message}`);
-        }
-    }
-
-    /**
-     * Mostrar estado de todas las carpetas para dar contexto al usuario
-     */
-    async mostrarEstadoCarpetas() {
-        console.log('\n📁 Estado de las carpetas:');
-        
-        try {
-            // Contar archivos en cada carpeta
-            const carpetas = [
-                { nombre: 'porEnviar', ruta: this.rutaArchivosPorEnviar },
-                { nombre: 'procesados/enviados', ruta: this.rutaArchivosEnviados },
-                { nombre: 'rechazados', ruta: this.rutaArchivosRechazados }
-            ];
-            
-            for (const carpeta of carpetas) {
-                try {
-                    const archivos = await fs.readdir(carpeta.ruta);
-                    const archivosJSON = archivos.filter(archivo => archivo.toLowerCase().endsWith('.json'));
-                    console.log(`   - ${carpeta.nombre}: ${archivosJSON.length} archivos JSON`);
-                } catch (error) {
-                    console.log(`   - ${carpeta.nombre}: No accesible o vacía`);
-                }
-            }
-            
-            // Contar carpetas originales sin procesar
-            try {
-                const carpetas = await fs.readdir(this.rutaBaseCarpetas, { withFileTypes: true });
-                const carpetasSinProcesar = carpetas.filter(dirent => 
-                    dirent.isDirectory() && 
-                    !['porEnviar', 'procesados', 'rechazados'].includes(dirent.name) &&
-                    !dirent.name.endsWith('_ajustada')
-                ).length;
-                
-                console.log(`   - Carpetas originales sin procesar: ${carpetasSinProcesar}`);
-                
-                if (carpetasSinProcesar === 0) {
-                    console.log('✅ Todas las carpetas han sido procesadas');
-                }
-                
-            } catch (error) {
-                console.log('   - Error verificando carpetas originales');
-            }
-            
-        } catch (error) {
-            console.log('❌ Error mostrando estado de carpetas');
         }
     }
 }
