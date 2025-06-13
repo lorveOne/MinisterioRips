@@ -42,9 +42,11 @@ function ajustarCarpetasJson(rutaBase) {
           rips: jsonOriginal,
           xmlFevFile: xmlBase64
         };
-
+        // Ajustar RIPS
+        const ripsAjustados = ajustarRIPS(nuevoJson);
+        
         fs.mkdirSync(carpetaSalida, { recursive: true });
-        fs.writeFileSync(jsonAjustado, JSON.stringify(nuevoJson, null, 2), 'utf8');
+        fs.writeFileSync(jsonAjustado, JSON.stringify(ripsAjustados, null, 2), 'utf8');
 
         console.log(`✅ Ajustado: ${nombreCarpeta}`);
         rutasAjustadas.push(jsonAjustado);
@@ -58,5 +60,8 @@ function ajustarCarpetasJson(rutaBase) {
 
   return rutasAjustadas;
 }
+
+
+
 
 module.exports = ajustarCarpetasJson;

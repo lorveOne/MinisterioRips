@@ -1,9 +1,8 @@
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
-const https = require('https');
 const ValidatorRIPS = require('../validator/rips.validator');
-const { log } = require('console');
+const hacerPeticionHTTPS = require('../helper/HttpClient');
 
 class MicroservicioRIPS {
     constructor() {
@@ -94,10 +93,10 @@ class MicroservicioRIPS {
                     };
                     
                     console.log(`🔧 Ajustando carpeta: ${nombreCarpeta}`);
-                    
+                    const newversion =  await this.ajustarRIPS(nuevoJson);
                     // Escribir directamente en la carpeta porEnviar
                     const rutaArchivoEnPorEnviar = path.join(this.rutaArchivosPorEnviar, nombreArchivoAjustado);
-                    await fs.writeFile(rutaArchivoEnPorEnviar, JSON.stringify(nuevoJson, null, 2), 'utf8');
+                    await fs.writeFile(rutaArchivoEnPorEnviar, JSON.stringify(newversion, null, 2), 'utf8');
 
                     console.log(`✅ Ajustado y guardado en porEnviar: ${nombreArchivoAjustado}`);
                     archivosAjustados.push(nombreArchivoAjustado);
@@ -120,6 +119,47 @@ class MicroservicioRIPS {
             throw errorGeneral;
         }
     }
+
+    async ajustarRIPS (ripsData)  {
+  console.log(`🔧 Ajustando RIPS.............................................................`);
+  
+    if (!ripsData || !ripsData.rips || !ripsData.rips.usuarios) {
+        throw new Error('Datos RIPS inválidos o incompletos');
+    }
+    let ajustesRealizados = 0;
+
+    // Recorrer todos los usuarios
+    ripsData.rips.usuarios.forEach(usuario => {
+        // Ajustar condicionDestinoUsuarioEgreso en urgencias
+        if (usuario.servicios.urgencias && usuario.servicios.urgencias.length > 0) {
+            usuario.servicios.urgencias.forEach(urgencia => {
+                if (urgencia.condicionDestinoUsuarioEgreso && urgencia.condicionDestinoUsuarioEgreso.length === 1) {
+                    const antes = urgencia.condicionDestinoUsuarioEgreso;
+                    urgencia.condicionDestinoUsuarioEgreso = `0${urgencia.condicionDestinoUsuarioEgreso}`;
+                    console.log(`📝 Ajustado condicionDestinoUsuarioEgreso:`);
+                    console.log(`   Antes: "${antes}" → Después: "${urgencia.condicionDestinoUsuarioEgreso}"`);
+                    ajustesRealizados++;
+                }
+            });
+        }
+
+        // Ajustar diasTratamiento en medicamentos
+        if (usuario.servicios.medicamentos && usuario.servicios.medicamentos.length > 0) {
+            usuario.servicios.medicamentos.forEach(medicamento => {
+                if (medicamento.diasTratamiento === 0) {
+                    const antes = medicamento.diasTratamiento;
+                    medicamento.diasTratamiento = 1;
+                    console.log(`📝 Ajustado diasTratamiento:`);
+                    console.log(`   Antes: ${antes} → Después: ${medicamento.diasTratamiento}`);
+                    ajustesRealizados++;
+                }
+            });
+        }
+    });
+
+    console.log(`✅ Total de ajustes realizados: ${ajustesRealizados}`);
+    return ripsData;
+}
 
     /**
      * Verificar si una carpeta ya fue procesada anteriormente
@@ -272,15 +312,16 @@ class MicroservicioRIPS {
             persona: {
                 identificacion: {
                     tipo: 'CC',
-                    numero: "1093218566"
+                    numero: "4450739"
                 }
             },
-            clave: "Laclavedetodo2025*",
-            nit: "901685966",
+            clave: "H0sp1t4l2025*",
+            nit: "810000913",
         };
 
         try {
-            const response = await this.hacerPeticionHTTPS('POST', '/Auth/LoginSISPRO', loginData);
+            const httpClient = new hacerPeticionHTTPS();
+            const response = await httpClient.hacerPeticionHTTPS('POST', '/Auth/LoginSISPRO', loginData);
             
             if (response.token) {
                 this.token = response.token;
@@ -299,176 +340,257 @@ class MicroservicioRIPS {
     /**
      * 3. Enviar archivo RIPS (adaptado para la nueva estructura)
      */
-    async enviarRIPS(nombreArchivo) {
-        console.log(`📤 PASO 3: Enviando ${nombreArchivo}...`);
-        
-        if (!this.token) {
-            throw new Error('No hay token válido. Hacer login primero.');
-        }
-
-        try {
-            const rutaArchivo = path.join(this.rutaArchivosPorEnviar, nombreArchivo);
-            const contenidoArchivo = await fs.readFile(rutaArchivo, 'utf8');
-            const jsonData = JSON.parse(contenidoArchivo);
-
-            // Enviar la estructura completa (rips + xmlFevFile)
-            const response = await this.hacerPeticionHTTPS('POST', '/PaquetesFevRips/CargarFevRips', jsonData, {
-                'Authorization': `Bearer ${this.token}`,
-                'Content-Type': 'application/json'
-            });
-
-            console.log(`✅ ${nombreArchivo} enviado exitosamente`);
-            
-            // Mover archivo a carpeta de enviados
-            await this.moverArchivo(nombreArchivo, 'procesados');
-            
-            return response;
-            
-        } catch (error) {
-            console.log(`❌ Error enviando ${nombreArchivo}: ${error.message}`);
-            
-            // Mover archivo a carpeta de rechazados
-            await this.moverArchivo(nombreArchivo, 'rechazados', `Error: ${error.message}`);
-            
-            throw error;
-        }
+   async enviarRIPS(nombreArchivo) {
+    console.log(`📤 PASO 3: Enviando ${nombreArchivo}...`);
+    
+    if (!this.token) {
+        throw new Error('No hay token válido. Hacer login primero.');
     }
 
-    /**
-     * Hacer petición HTTPS
-     */
-    async hacerPeticionHTTPS(metodo, endpoint, data = null, headers = {}) {
-        return new Promise((resolve, reject) => {
-            const url = new URL(this.baseURL + endpoint);
-            
-            const options = {
-                hostname: url.hostname,
-                port: url.port,
-                path: url.pathname,
-                method: metodo,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...headers
-                },
-                rejectUnauthorized: false // Solo para desarrollo
-            };
+    try {
+        const rutaArchivo = path.join(this.rutaArchivosPorEnviar, nombreArchivo);
+        const contenidoArchivo = await fs.readFile(rutaArchivo, 'utf8');
+        const jsonData = JSON.parse(contenidoArchivo);
 
-            const req = https.request(options, (res) => {
-                let responseData = '';
-                
-                res.on('data', (chunk) => {
-                    responseData += chunk;
-                });
-                
-                res.on('end', () => {
-                    try {
-                        const jsonResponse = JSON.parse(responseData);
-                        
-                        if (res.statusCode >= 200 && res.statusCode < 300) {
-                            resolve(jsonResponse);
-                        } else {
-                            reject(new Error(`HTTP ${res.statusCode}: ${jsonResponse.message || responseData}`));
-                        }
-                    } catch (error) {
-                        reject(new Error(`Error parsing response: ${responseData}`));
-                    }
-                });
-            });
-
-            req.on('error', (error) => {
-                reject(error);
-            });
-
-            if (data && (metodo === 'POST' || metodo === 'PUT')) {
-                req.write(JSON.stringify(data));
-            }
-
-            req.end();
+        const httpClient = new hacerPeticionHTTPS();
+        const response = await httpClient.hacerPeticionHTTPS('POST', '/PaquetesFevRips/CargarFevRips', jsonData, {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json'
         });
-    }
 
-    /**
-     * Mover archivo a carpeta específica con log detallado
-     */
-    async moverArchivo(nombreArchivo, tipoDestino, motivo = '') {
-        try {
-            const rutaOrigen = path.join(this.rutaArchivosPorEnviar, nombreArchivo);
-            
-            let carpetaDestino;
-            let nombreCarpeta;
-            
-            switch (tipoDestino) {
-                case 'procesados':
-                    carpetaDestino = this.rutaArchivosEnviados;
-                    nombreCarpeta = 'procesados';
-                    break;
-                case 'rechazados':
-                    carpetaDestino = this.rutaArchivosRechazados;
-                    nombreCarpeta = 'rechazados';
-                    break;
-                default:
-                    throw new Error(`Tipo de destino no válido: ${tipoDestino}`);
-            }
-            
-            // Verificar que el archivo origen existe
-            await fs.access(rutaOrigen);
-            
-            // Crear nombre único para evitar sobrescribir
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const extension = path.extname(nombreArchivo);
-            const nombreBase = path.basename(nombreArchivo, extension);
-            const nombreArchivoDestino = `${nombreBase}_${timestamp}${extension}`;
-            
-            const rutaDestino = path.join(carpetaDestino, nombreArchivoDestino);
-            
-            // Mover el archivo
-            await fs.rename(rutaOrigen, rutaDestino);
-            
-            console.log(`📁 ${nombreArchivo} movido a carpeta: ${nombreCarpeta}`);
-            if (motivo) {
-                console.log(`   📝 Motivo: ${motivo}`);
-            }
-            
-            // Crear archivo de log con detalles del procesamiento
-            await this.crearLogProcesamiento(nombreArchivo, tipoDestino, motivo, rutaDestino);
-            
-        } catch (error) {
-            console.log(`⚠️ No se pudo mover ${nombreArchivo}: ${error.message}`);
-        }
-    }
+        console.log(`📡 ${nombreArchivo} enviado al servidor`);
 
-    /**
-     * Crear log de procesamiento
-     */
-    async crearLogProcesamiento(nombreArchivo, estado, motivo, rutaArchivo) {
-        try {
-            const logData = {
-                archivo: nombreArchivo,
-                fechaProcesamiento: new Date().toISOString(),
-                estado: estado,
-                motivo: motivo,
-                rutaFinal: rutaArchivo
-            };
+        // Evaluar ResultState para determinar el destino
+        const resultState = response?.ResultState;
+        const cuv = response?.CodigoUnicoValidacion;
+        
+        // Buscar CUV en casos de duplicados (error RVG18)
+        let cuvEncontrado = cuv;
+        let esDuplicado = false;
+        
+        if (resultState === false && response?.ResultadosValidacion) {
+            // Buscar error RVG18 (CUV ya aprobado previamente)
+            const errorDuplicado = response.ResultadosValidacion.find(r => 
+                r.Clase === 'RECHAZADO' && r.Codigo === 'RVG18'
+            );
             
-            const nombreLog = `log_${new Date().toISOString().split('T')[0]}.json`;
-            const rutaLog = path.join(path.dirname(rutaArchivo), nombreLog);
-            
-            let logsExistentes = [];
-            try {
-                const contenidoLog = await fs.readFile(rutaLog, 'utf8');
-                logsExistentes = JSON.parse(contenidoLog);
-            } catch (error) {
-                // Si no existe el archivo de log, se crea uno nuevo
+            if (errorDuplicado && errorDuplicado.Observaciones) {
+                // El CUV viene en las observaciones del error RVG18
+                cuvEncontrado = errorDuplicado.Observaciones.trim();
+                esDuplicado = true;
+                console.log(`🔄 Archivo ya procesado anteriormente`);
+                console.log(`🎯 CUV recuperado de proceso anterior: ${cuvEncontrado}`);
             }
             
-            logsExistentes.push(logData);
-            
-            await fs.writeFile(rutaLog, JSON.stringify(logsExistentes, null, 2), 'utf8');
-            
-        } catch (error) {
-            console.log(`⚠️ No se pudo crear log: ${error.message}`);
+            // También buscar en RVG02 por si viene ahí
+            if (!cuvEncontrado || cuvEncontrado.includes('No aplica')) {
+                const errorRVG02 = response.ResultadosValidacion.find(r => 
+                    r.Clase === 'RECHAZADO' && r.Codigo === 'RVG02'
+                );
+                
+                if (errorRVG02 && errorRVG02.Observaciones) {
+                    // Extraer CUV del texto de observaciones usando regex
+                    const matchCUV = errorRVG02.Observaciones.match(/CUV\s+([a-f0-9]{64})/i);
+                    if (matchCUV && matchCUV[1]) {
+                        cuvEncontrado = matchCUV[1];
+                        esDuplicado = true;
+                        console.log(`🎯 CUV extraído de RVG02: ${cuvEncontrado}`);
+                    }
+                }
+            }
         }
+        
+        if (resultState === true) {
+            // Éxito - mover a procesados
+            console.log(`✅ ${nombreArchivo} procesado exitosamente`);
+            if (cuvEncontrado && !cuvEncontrado.includes('No aplica')) {
+                console.log(`🎯 CUV obtenido: ${cuvEncontrado}`);
+            }
+            
+            await this.moverArchivo(nombreArchivo, 'procesados', JSON.stringify({
+                estado: 'EXITOSO',
+                fechaProceso: new Date().toISOString(),
+                cuv: cuvEncontrado,
+                respuestaCompleta: response
+            }, null, 2));
+            
+            return { success: true, response, cuv: cuvEncontrado };
+            
+        } else if (esDuplicado && cuvEncontrado && !cuvEncontrado.includes('No aplica')) {
+            // Archivo duplicado pero con CUV válido - mover a procesados
+            console.log(`✅ ${nombreArchivo} ya fue procesado anteriormente (duplicado)`);
+            
+            await this.moverArchivo(nombreArchivo, 'procesados', JSON.stringify({
+                estado: 'DUPLICADO_CON_CUV',
+                fechaProceso: new Date().toISOString(),
+                cuv: cuvEncontrado,
+                motivo: 'Archivo ya procesado en proceso anterior',
+                respuestaCompleta: response
+            }, null, 2));
+            
+            return { success: true, response, cuv: cuvEncontrado, isDuplicate: true };
+            
+        } else {
+            // Rechazado - mover a rechazados
+            console.log(`❌ ${nombreArchivo} rechazado por el servidor`);
+            
+            // Mostrar errores específicos
+            if (response?.ResultadosValidacion) {
+                const errores = response.ResultadosValidacion.filter(r => r.Clase === 'RECHAZADO');
+                const notificaciones = response.ResultadosValidacion.filter(r => r.Clase === 'NOTIFICACION');
+                
+                if (errores.length > 0) {
+                    console.log(`🚫 Errores encontrados (${errores.length}):`);
+                    errores.forEach((error, index) => {
+                        console.log(`   ${index + 1}. [${error.Codigo}] ${error.Descripcion}`);
+                        if (error.Observaciones) {
+                            console.log(`      📌 ${error.Observaciones}`);
+                        }
+                    });
+                }
+                
+                if (notificaciones.length > 0) {
+                    console.log(`⚠️ Notificaciones (${notificaciones.length})`);
+                }
+            }
+            
+            await this.moverArchivo(nombreArchivo, 'rechazados', JSON.stringify({
+                estado: 'RECHAZADO',
+                fechaProceso: new Date().toISOString(),
+                motivo: 'ResultState: false',
+                cuv: cuvEncontrado || null,
+                respuestaCompleta: response
+            }, null, 2));
+            
+            return { success: false, response, errors: response?.ResultadosValidacion, cuv: cuvEncontrado };
+        }
+
+    } catch (error) {
+        console.log(`❌ Error enviando ${nombreArchivo}: ${error.message}`);
+        
+        // Error de comunicación - mover a rechazados
+        await this.moverArchivo(nombreArchivo, 'rechazados', JSON.stringify({
+            estado: 'ERROR_COMUNICACION',
+            fechaProceso: new Date().toISOString(),
+            error: error.message
+        }, null, 2));
+        
+        throw error;
     }
+}
+
+/**
+ * Mover archivo con información extendida
+ */
+async moverArchivo(nombreArchivo, tipoDestino, datosAdicionales ) {
+    try {
+
+        console.log(datosAdicionales);
+        
+        const rutaOrigen = path.join(this.rutaArchivosPorEnviar, nombreArchivo);
+        
+        let carpetaDestino;
+        let nombreCarpeta;
+        
+        switch (tipoDestino) {
+            case 'procesados':
+                carpetaDestino = this.rutaArchivosEnviados;
+                nombreCarpeta = 'procesados';
+                break;
+            case 'rechazados':
+                carpetaDestino = this.rutaArchivosRechazados;
+                nombreCarpeta = 'rechazados';
+                break;
+            default:
+                throw new Error(`Tipo de destino no válido: ${tipoDestino}`);
+        }
+        
+        // Verificar que el archivo origen existe
+        await fs.access(rutaOrigen);
+        
+        // Crear nombre único para evitar sobrescribir
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const extension = path.extname(nombreArchivo);
+        const nombreBase = path.basename(nombreArchivo, extension);
+        const nombreArchivoDestino = `${nombreBase}_${timestamp}${extension}`;
+        
+        const rutaDestino = path.join(carpetaDestino, nombreArchivoDestino);
+        
+        // Mover el archivo
+        await fs.rename(rutaOrigen, rutaDestino);
+        
+        console.log(`📁 ${nombreArchivo} movido a carpeta: ${nombreCarpeta}`);
+        
+        // Mostrar información adicional
+        if (datosAdicionales.cuv) {
+            console.log(`   🎯 CUV: ${datosAdicionales.cuv}`);
+        }
+        if (datosAdicionales.motivo) {
+            console.log(`   📝 Motivo: ${datosAdicionales.motivo}`);
+        }
+        if (datosAdicionales.isDuplicate) {
+            console.log(`   🔄 Archivo duplicado procesado exitosamente`);
+        }
+        
+        // Crear archivo de log con detalles del procesamiento
+        await this.crearLogProcesamientoMejorado(nombreArchivo, tipoDestino, datosAdicionales, rutaDestino);
+        
+    } catch (error) {
+        console.log(`⚠️ No se pudo mover ${nombreArchivo}: ${error.message}`);
+    }
+}
+
+/**
+ * Crear log de procesamiento mejorado con más información
+ */
+async crearLogProcesamientoMejorado(nombreArchivo, estado, datosAdicionales, rutaArchivo) {
+    try {
+       const datosAdicionales1 = JSON.parse(datosAdicionales);
+       
+
+    
+
+        const logData = {
+            archivo: nombreArchivo,
+            fechaProcesamiento: new Date().toISOString(),
+            estado: estado,
+            cuv: datosAdicionales1.cuv || null,
+            motivo: datosAdicionales1.motivo || '',
+            isDuplicate: datosAdicionales1.isDuplicate || false,
+            errores: datosAdicionales1.ResultadosValidacion || null,
+        };
+        
+        const nombreLog = `log_${new Date().toISOString().split('T')[0]}.json`;
+        const rutaLog = path.join(path.dirname(rutaArchivo), nombreLog);
+        
+        let logsExistentes = [];
+        try {
+            const contenidoLog = await fs.readFile(rutaLog, 'utf8');
+            logsExistentes = JSON.parse(contenidoLog);
+        } catch (error) {
+            // Si no existe el archivo de log, se crea uno nuevo
+        }
+        
+        logsExistentes.push(logData);
+        
+        await fs.writeFile(rutaLog, JSON.stringify(logsExistentes, null, 2), 'utf8');
+        
+        // Crear archivo separado con respuesta completa si es necesario
+        if (datosAdicionales1.response && (estado === 'rechazados' || datosAdicionales1.guardarRespuesta)) {
+            const nombreRespuesta = `respuesta_${path.basename(nombreArchivo, path.extname(nombreArchivo))}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+            const rutaRespuesta = path.join(path.dirname(rutaArchivo), 'respuestas', nombreRespuesta);
+            
+            // Crear carpeta respuestas si no existe
+            const carpetaRespuestas = path.dirname(rutaRespuesta);
+            await fs.mkdir(carpetaRespuestas, { recursive: true });
+            
+            await fs.writeFile(rutaRespuesta, JSON.stringify(datosAdicionales1.response, null, 2), 'utf8');
+        }
+        
+    } catch (error) {
+        console.log(`⚠️ No se pudo crear log: ${error.message}`);
+    }
+}
 
     /**
      * Proceso principal actualizado
@@ -543,7 +665,7 @@ class MicroservicioRIPS {
             // Contar archivos en cada carpeta
             const carpetas = [
                 { nombre: 'porEnviar', ruta: this.rutaArchivosPorEnviar },
-                { nombre: 'procesados/enviados', ruta: this.rutaArchivosEnviados },
+                { nombre: 'procesados', ruta: this.rutaArchivosEnviados },
                 { nombre: 'rechazados', ruta: this.rutaArchivosRechazados }
             ];
             
