@@ -140,204 +140,357 @@ class MicroservicioRIPS {
         }
     }
 
-    async ajustarRIPS(ripsData, periodoFacturacion) {
-    console.log(`🔧 Ajustando RIPS...`);
+    async ajustarRIPS (ripsData, periodoFacturacion)  {
+  console.log(`🔧 Ajustando RIPS.............................................................`);
   
-    // Validación inicial
-    if (!ripsData?.rips?.usuarios) {
+    if (!ripsData || !ripsData.rips || !ripsData.rips.usuarios) {
         throw new Error('Datos RIPS inválidos o incompletos');
     }
-
     let ajustesRealizados = 0;
-    const { usuarios } = ripsData.rips;
 
-    // Funciones auxiliares reutilizables
-    const normalizarFecha = (fecha) => {
-        const formatos = [
-            'YYYY-MM-DD HH:mm:ss',
-            'YYYY-MM-DDTHH:mm:ss.SSSZ',
-            'YYYY-MM-DD HH:mm',
-            'YYYY-MM-DD',
-            'DD/MM/YYYY HH:mm:ss',
-            'DD/MM/YYYY HH:mm',
-            'DD/MM/YYYY',
-            moment.ISO_8601
-        ];
-        
-        return moment(fecha, formatos, true).isValid() 
-            ? moment(fecha, formatos, true) 
-            : moment(fecha);
-    };
-
-    const ajustarFechaAlPeriodo = (fechaOriginal, fechaReferencia, formatoOriginal) => {
-        const [hora] = fechaOriginal.includes(' ') ? fechaOriginal.split(' ')[1].split(':') : ['00:00:00'];
-        const [year, month, day] = fechaReferencia.split('-');
-        
-        return formatoOriginal.includes('/') 
-            ? `${day}/${month}/${year} ${hora}`
-            : `${fechaReferencia} ${hora}`;
-    };
-
-    const validarYajustarFecha = (fecha, index, tipoServicio) => {
-        try {
-            const fechaServicio = normalizarFecha(fecha).local();
-            const inicioPeriodo = moment(periodoFacturacion.startDateTime).local();
-            
-            // Ajustar finPeriodo para que coincida con endDate
-            let finPeriodo = moment(periodoFacturacion.endDateTime).local();
-            if (finPeriodo.format('YYYY-MM-DD') !== periodoFacturacion.endDate) {
-                finPeriodo = moment(periodoFacturacion.endDate)
-                    .set({ hour: 23, minute: 59, second: 59 })
-                    .local();
-            }
-
-            if (!fechaServicio.isValid()) {
-                console.error(`❌ ${tipoServicio}[${index}] - Fecha inválida: ${fecha}`);
-                return fecha;
-            }
-
-            if (fechaServicio.isBefore(inicioPeriodo)) {
-                console.log(`📅 ${tipoServicio}[${index}] - Fecha anterior al período`);
-                return inicioPeriodo.format('YYYY-MM-DD HH:mm');
-            } else if (fechaServicio.isAfter(finPeriodo)) {
-                console.log(`📅 ${tipoServicio}[${index}] - Fecha posterior al período`);
-                return finPeriodo.format('YYYY-MM-DD HH:mm');
-            }
-            
-            return fechaServicio.format('YYYY-MM-DD HH:mm');
-        } catch (error) {
-            console.error(`💥 Error validando fecha en ${tipoServicio}[${index}]:`, error);
-            return fecha;
-        }
-    };
-
-    // Procesamiento de usuarios
-    usuarios.forEach(usuario => {
-        const { servicios } = usuario;
-
-        // Ajustes para urgencias
-        if (servicios.urgencias?.length > 0) {
-            servicios.urgencias.forEach((urgencia, index) => {
-                // Ajuste condicionDestinoUsuarioEgreso
-                if (urgencia.condicionDestinoUsuarioEgreso?.length === 1) {
+    // Recorrer todos los usuarios
+    ripsData.rips.usuarios.forEach(usuario => {
+        // Ajustar condicionDestinoUsuarioEgreso en urgencias
+        if (usuario.servicios.urgencias && usuario.servicios.urgencias.length > 0) {
+            usuario.servicios.urgencias.forEach((urgencia, urgindex) => {
+                if (urgencia.condicionDestinoUsuarioEgreso && urgencia.condicionDestinoUsuarioEgreso.length === 1) {
                     const antes = urgencia.condicionDestinoUsuarioEgreso;
-                    urgencia.condicionDestinoUsuarioEgreso = `0${antes}`;
-                    console.log(`📝 Urgencia[${index}] - Ajustado condicionDestinoUsuarioEgreso: "${antes}" → "${urgencia.condicionDestinoUsuarioEgreso}"`);
+                    urgencia.condicionDestinoUsuarioEgreso = `0${urgencia.condicionDestinoUsuarioEgreso}`;
+                    console.log(`📝 Ajustado condicionDestinoUsuarioEgreso:`);
+                    console.log(`   Antes: "${antes}" → Después: "${urgencia.condicionDestinoUsuarioEgreso}"`);
                     ajustesRealizados++;
                 }
-
-                // Ajuste fechaEgreso
                 if (urgencia.fechaEgreso) {
-                    const fechaOriginal = urgencia.fechaEgreso;
-                    urgencia.fechaEgreso = validarYajustarFecha(fechaOriginal, index, 'Urgencia');
-                    if (urgencia.fechaEgreso !== fechaOriginal) ajustesRealizados++;
-                }
+    console.log("↪️ Validando fecha de egreso");
+    
+    try {
+        // 1. Función mejorada de normalización
+        const normalizarFecha = (fecha) => {
+            // Primero intentar con formato ISO (UTC)
+            let fechaMoment = moment.utc(fecha, moment.ISO_8601, true);
+            
+            // Si no es válido, intentar otros formatos locales
+            if (!fechaMoment.isValid()) {
+                const formatosLocales = [
+                    'YYYY-MM-DD HH:mm:ss',
+                    'YYYY-MM-DD HH:mm',
+                    'YYYY-MM-DD',
+                    'DD/MM/YYYY HH:mm:ss',
+                    'DD/MM/YYYY HH:mm',
+                    'DD/MM/YYYY'
+                ];
+                fechaMoment = moment(fecha, formatosLocales, true);
+            }
+            
+            // Si sigue sin ser válido, intentar parsing flexible
+            if (!fechaMoment.isValid()) {
+                fechaMoment = moment(fecha);
+                console.warn("⚠️ Usando parsing flexible para fecha:", fecha);
+            }
+            
+            return fechaMoment;
+        };
+
+        // 2. Normalizar fechas del período (convertir a local time primero)
+        const inicioPeriodo = moment(periodoFacturacion.startDateTime).local();
+        const finPeriodo = moment(periodoFacturacion.endDateTime).local();
+        
+        // Ajustar finPeriodo para que sea el mismo día que endDate
+        if (finPeriodo.format('YYYY-MM-DD') !== periodoFacturacion.endDate) {
+            console.warn("⚠️ Ajustando finPeriodo para coincidir con endDate");
+            finPeriodo.set({
+                year: moment(periodoFacturacion.endDate).year(),
+                month: moment(periodoFacturacion.endDate).month(),
+                date: moment(periodoFacturacion.endDate).date(),
+                hour: 23,
+                minute: 59,
+                second: 59
             });
         }
 
-        // Ajustes para medicamentos
-        if (servicios.medicamentos?.length > 0) {
-            servicios.medicamentos.forEach((medicamento, index) => {
-               
-                if (medicamento.diasTratamiento === 0) {
-                    medicamento.diasTratamiento = 1;
-                    console.log(`📝 Medicamento - Ajustado diasTratamiento: 0 → 1`);
-                    ajustesRealizados++;
-                }
-                 if (medicamento.fechaDispensAdmon) {
-                    const fechaOriginal = medicamento.fechaDispensAdmon;
-                    medicamento.fechaDispensAdmon = validarYajustarFecha(fechaOriginal, index, 'Consulta');
-                    if (medicamento.fechaDispensAdmon !== fechaOriginal) ajustesRealizados++;
-                }
-                
-            });        
+        // 3. Normalizar fecha de egreso
+        const fechaEgreso = normalizarFecha(urgencia.fechaEgreso).local();
+
+        // 4. Validaciones
+        if (!fechaEgreso.isValid()) {
+            console.error(`❌ Fecha de egreso inválida: ${urgencia.fechaEgreso}`);
+            return;
         }
 
-        // Ajustes para consultas
-        if (servicios.consultas?.length > 0) {
-            servicios.consultas.forEach((consulta, index) => {
+        // 5. Comparación y ajuste
+        console.log('🔍 Rango de fechas válido:', 
+            inicioPeriodo.format('YYYY-MM-DD HH:mm:ss'), 
+            'a', 
+            finPeriodo.format('YYYY-MM-DD HH:mm:ss'));
+
+        if (fechaEgreso.isBefore(inicioPeriodo)) {
+            console.log(`📅 Fecha anterior al período (${fechaEgreso.format('YYYY-MM-DD HH:mm:ss')})`);
+            urgencia.fechaEgreso = inicioPeriodo.format('YYYY-MM-DD HH:mm');
+            ajustesRealizados++;
+        } else if (fechaEgreso.isAfter(finPeriodo)) {
+            console.log(`📅 Fecha posterior al período (${fechaEgreso.format('YYYY-MM-DD HH:mm:ss')})`);
+            urgencia.fechaEgreso = finPeriodo.format('YYYY-MM-DD HH:mm');
+            ajustesRealizados++;
+        } else {
+            console.log(`✅ Fecha dentro del período válido`);
+            // Formatear fecha al formato deseado
+            urgencia.fechaEgreso = fechaEgreso.format('YYYY-MM-DD HH:mm');
+        }
+
+        // 6. Log detallado
+        console.log('📝 Resultado final:', {
+            fechaOriginal: urgencia.fechaEgreso,
+            fechaAjustada: urgencia.fechaEgreso,
+            periodo: {
+                start: inicioPeriodo.format('YYYY-MM-DD HH:mm:ss'),
+                end: finPeriodo.format('YYYY-MM-DD HH:mm:ss')
+            }
+        });
+        
+    } catch (error) {
+        console.error(`💥 Error en validación de fechas:`, error);
+        console.error('Contexto:', {
+            fechaEgreso: urgencia.fechaEgreso,
+            periodo: periodoFacturacion
+        });
+    }
+} else {
+    console.log('⚠️ Sin fecha de egreso');
+}
+
+            });
+        }
+
+
+       ///Ajustando Consultas
+        if (usuario.servicios.consultas && usuario.servicios.consultas.length > 0) {
+            usuario.servicios.consultas.forEach((consulta, index) => {
                 if (consulta.fechaInicioAtencion) {
-                    const fechaOriginal = consulta.fechaInicioAtencion;
-                    consulta.fechaInicioAtencion = validarYajustarFecha(fechaOriginal, index, 'Consulta');
-                    if (consulta.fechaInicioAtencion !== fechaOriginal) ajustesRealizados++;
+                    // Tu lógica original - ajustar formato si es necesario
+                    if (consulta.fechaInicioAtencion.length === 1) {
+                        const antes = consulta.fechaInicioAtencion;
+                        consulta.fechaInicioAtencion = `${consulta.fechaInicioAtencion}`;
+                        console.log(`📝 Ajustado fechaInicioAtencion:`);
+                        console.log(`   Antes: "${antes}" → Después: "${consulta.fechaInicioAtencion}"`);
+                        ajustesRealizados++;
+                    }
+                    
+                    // Validar si la fecha está dentro del período de facturación
+                    try {
+                        let fechaServicio;
+                        
+                        // Parsear la fecha del servicio
+                        if (consulta.fechaInicioAtencion.includes('/')) {
+                            // Formato: DD/MM/YYYY HH:mm:ss
+                            const [fechaParte] = consulta.fechaInicioAtencion.split(' ');
+                            const [dia, mes, año] = fechaParte.split('/');
+                            fechaServicio = new Date(`${año}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`);
+                        } else {
+                            // Formato: YYYY-MM-DD
+                            fechaServicio = new Date(consulta.fechaInicioAtencion.split(' ')[0]);
+                        }
+                        
+                        // Crear fechas del período de facturación (solo fecha, sin hora)
+                        const fechaInicio = new Date(periodoFacturacion.startDate);
+                        const fechaFin = new Date(periodoFacturacion.endDate);
+                        
+                        // Verificar si la fecha está fuera del período
+                        if (fechaServicio < fechaInicio || fechaServicio > fechaFin) {
+                            const fechaOriginal = consulta.fechaInicioAtencion;
+                            
+                            // Extraer la hora original si existe
+                            const [, horaOriginal] = fechaOriginal.split(' ');
+                            const hora = horaOriginal || '00:00:00';
+                            
+                            // Crear nueva fecha usando endDate del período
+                            const [año, mes, dia] = periodoFacturacion.endDate.split('-');
+                            let fechaNueva;
+                            
+                            if (fechaOriginal.includes('/')) {
+                                // Mantener formato DD/MM/YYYY HH:mm:ss
+                                fechaNueva = `${dia}/${mes}/${año} ${hora}`;
+                            } else {
+                                // Mantener formato YYYY-MM-DD HH:mm:ss
+                                fechaNueva = `${periodoFacturacion.endDate} ${hora}`;
+                            }
+                            
+                            consulta.fechaInicioAtencion = fechaNueva;
+                            
+                            console.log(`⚠️  Consulta[${index}] - fecha fuera del período:`);
+                            console.log(`   Fecha original: ${fechaOriginal}`);
+                            console.log(`   Período válido: ${periodoFacturacion.startDate} al ${periodoFacturacion.endDate}`);
+                            console.log(`   ✅ Fecha ajustada: ${fechaNueva}`);
+                            ajustesRealizados++;
+                        }
+                        
+                    } catch (error) {
+                        console.error(`❌ Error validando fecha en consulta[${index}]:`, error.message);
+                    }
                 }
             });
         }
 
-        // Ajustes para hospitalización
-        if (servicios.hospitalizacion?.length > 0) {
-            servicios.hospitalizacion.forEach((hospita, index) => {
-                // Ajuste viaIngresoServicioSalud
-                if (hospita.viaIngresoServicioSalud?.length === 1) {
+        ///Ajustar Hospitalizacion 
+         if (usuario.servicios.hospitalizacion && usuario.servicios.hospitalizacion.length > 0) {
+            usuario.servicios.hospitalizacion.forEach(hospita => {
+                if (hospita.viaIngresoServicioSalud && hospita.viaIngresoServicioSalud.length === 1) {
                     const antes = hospita.viaIngresoServicioSalud;
-                    hospita.viaIngresoServicioSalud = '02';
-                    console.log(`📝 Hospitalización[${index}] - Ajustado viaIngresoServicioSalud: "${antes}" → "${hospita.viaIngresoServicioSalud}"`);
+                    hospita.viaIngresoServicioSalud = `02`;
+                    console.log(`📝 Ajustado viaIngresoServicioSalud:`);
+                    console.log(`   Antes: "${antes}" → Después: "${hospita.viaIngresoServicioSalud}"`);
                     ajustesRealizados++;
                 }
-
-                // Ajuste condicionDestinoUsuarioEgreso
-                if (hospita.condicionDestinoUsuarioEgreso?.trim() === '') {
-                    hospita.condicionDestinoUsuarioEgreso = '01';
-                    console.log(`📝 Hospitalización[${index}] - Ajustado condicionDestinoUsuarioEgreso: "" → "01"`);
+                if (hospita.condicionDestinoUsuarioEgreso.trim() === '') {
+                    const antes = hospita.condicionDestinoUsuarioEgreso;
+                    hospita.condicionDestinoUsuarioEgreso = `01`;
+                    console.log(`📝 Ajustado condicionDestinoUsuarioEgreso:`);
+                    console.log(`   Antes: "${antes}" → Después: "${hospita.condicionDestinoUsuarioEgreso}"`);
                     ajustesRealizados++;
                 }
-
-                // Ajuste fechaInicioAtencion
-                if (hospita.fechaInicioAtencion) {
-                    const fechaOriginal = hospita.fechaInicioAtencion;
-                    hospita.fechaInicioAtencion = validarYajustarFecha(fechaOriginal, index, 'Hospitalización');
-                    if (hospita.fechaInicioAtencion !== fechaOriginal) ajustesRealizados++;
-                }
-                 if (hospita.fechaEgreso) {
-                    const fechaOriginal = hospita.fechaEgreso;
-                    hospita.fechaEgreso = validarYajustarFecha(fechaOriginal, index, 'Hospitalización');
-                    if (hospita.fechaEgreso !== fechaOriginal) ajustesRealizados++;
+                  if (hospita.fechaInicioAtencion) {
+                    // Tu lógica original - ajustar formato si es necesario
+                    if (hospita.fechaInicioAtencion.length === 1) {
+                        const antes = hospita.fechaInicioAtencion;
+                        hospita.fechaInicioAtencion = `${hospita.fechaInicioAtencion}`;
+                        console.log(`📝 Ajustado fechaInicioAtencion:`);
+                        console.log(`   Antes: "${antes}" → Después: "${hospita.fechaInicioAtencion}"`);
+                        ajustesRealizados++;
+                    }
+                    
+                    // Validar si la fecha está dentro del período de facturación
+                    try {
+                        let fechaServicio;
+                        
+                        // Parsear la fecha del servicio
+                        if (hospita.fechaInicioAtencion.includes('/')) {
+                            // Formato: DD/MM/YYYY HH:mm:ss
+                            const [fechaParte] = hospita.fechaInicioAtencion.split(' ');
+                            const [dia, mes, año] = fechaParte.split('/');
+                            fechaServicio = new Date(`${año}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`);
+                        } else {
+                            // Formato: YYYY-MM-DD
+                            fechaServicio = new Date(hospita.fechaInicioAtencion.split(' ')[0]);
+                        }
+                        
+                        // Crear fechas del período de facturación (solo fecha, sin hora)
+                        const fechaInicio = new Date(periodoFacturacion.startDate);
+                        const fechaFin = new Date(periodoFacturacion.endDate);
+                        
+                        // Verificar si la fecha está fuera del período
+                        if (fechaServicio < fechaInicio || fechaServicio > fechaFin) {
+                            const fechaOriginal = hospita.fechaInicioAtencion;
+                            
+                            // Extraer la hora original si existe
+                            const [, horaOriginal] = fechaOriginal.split(' ');
+                            const hora = horaOriginal || '00:00:00';
+                            
+                            // Crear nueva fecha usando endDate del período
+                            const [año, mes, dia] = periodoFacturacion.endDate.split('-');
+                            let fechaNueva;
+                            
+                            if (fechaOriginal.includes('/')) {
+                                // Mantener formato DD/MM/YYYY HH:mm:ss
+                                fechaNueva = `${dia}/${mes}/${año} ${hora}`;
+                            } else {
+                                // Mantener formato YYYY-MM-DD HH:mm:ss
+                                fechaNueva = `${periodoFacturacion.endDate} ${hora}`;
+                            }
+                            
+                            hospita.fechaInicioAtencion = fechaNueva;
+                            
+                            console.log(`⚠️  Consulta[${index}] - fecha fuera del período:`);
+                            console.log(`   Fecha original: ${fechaOriginal}`);
+                            console.log(`   Período válido: ${periodoFacturacion.startDate} al ${periodoFacturacion.endDate}`);
+                            console.log(`   ✅ Fecha ajustada: ${fechaNueva}`);
+                            ajustesRealizados++;
+                        }
+                        
+                    } catch (error) {
+                        console.error(`❌ Error validando fecha en consulta[${index}]:`, error.message);
+                    }
                 }
             });
         }
 
-        
-
-        // Ajustes para procedimientos
-        if (servicios.procedimientos?.length > 0) {
-            servicios.procedimientos.forEach((procedimiento, index) => {
-                // Ajuste finalidadTecnologiaSalud
-                if (procedimiento.finalidadTecnologiaSalud?.toString().length === 1) {
-                    const antes = procedimiento.finalidadTecnologiaSalud;
-                    procedimiento.finalidadTecnologiaSalud = '44';
-                    console.log(`📝 Procedimiento[${index}] - Ajustado finalidadTecnologiaSalud: "${antes}" → "44"`);
+        // Ajustar diasTratamiento en medicamentos
+        if (usuario.servicios.medicamentos && usuario.servicios.medicamentos.length > 0) {
+            usuario.servicios.medicamentos.forEach(medicamento => {
+                if (medicamento.diasTratamiento === 0) {
+                    const antes = medicamento.diasTratamiento;
+                    medicamento.diasTratamiento = 1;
+                    console.log(`📝 Ajustado diasTratamiento:`);
+                    console.log(`   Antes: ${antes} → Después: ${medicamento.diasTratamiento}`);
                     ajustesRealizados++;
-                }
-
-                // Ajuste fechaInicioAtencion
-                if (procedimiento.fechaInicioAtencion) {
-                    const fechaOriginal = procedimiento.fechaInicioAtencion;
-                    procedimiento.fechaInicioAtencion = validarYajustarFecha(fechaOriginal, index, 'Procedimiento');
-                    if (procedimiento.fechaInicioAtencion !== fechaOriginal) ajustesRealizados++;
                 }
             });
         }
 
-        // Ajustes para otros servicios
-        if (servicios.otrosServicios?.length > 0) {
-            servicios.otrosServicios.forEach((otro, index) => {
-                if (otro.codTecnologiaSalud === 'TAB-SC-URBU') {
-                    const antes = otro.codTecnologiaSalud;
-                    otro.codTecnologiaSalud = 'T2387G';
-                    console.log(`📝 OtroServicio - Ajustado codTecnologiaSalud: "${antes}" → "T2387G"`);
+        // Ajustar diasTratamiento en Procedimientos
+            if (usuario.servicios.procedimientos && usuario.servicios.procedimientos.length > 0) {
+                usuario.servicios.procedimientos.forEach((procedimiento, procedimientoIndex) => {
+                    
+                    // 1. Ajustar finalidadTecnologiaSalud - LÓGICA CORREGIDA
+                    if (procedimiento.finalidadTecnologiaSalud && 
+                        procedimiento.finalidadTecnologiaSalud.toString().length === 1) {
+                        const antes = procedimiento.finalidadTecnologiaSalud;
+                        procedimiento.finalidadTecnologiaSalud = "44";
+                        console.log(`📝 Procedimiento[${procedimientoIndex}] - Ajustado finalidadTecnologiaSalud:`);
+                        console.log(`   Antes: ${antes} → Después: ${procedimiento.finalidadTecnologiaSalud}`);
+                        ajustesRealizados++;
+                    }
+                    
+                    // 2. Procesar fechaInicioAtencion
+                    if (procedimiento.fechaInicioAtencion) {
+                        // Remover lógica redundante de ajuste de longitud
+                        
+                        // Validar si la fecha está dentro del período de facturación
+                        try {
+                            const fechaServicio = parsearFecha(procedimiento.fechaInicioAtencion);
+                            
+                            if (!fechaServicio) {
+                                console.error(`❌ Procedimiento[${procedimientoIndex}] - Formato de fecha inválido: ${procedimiento.fechaInicioAtencion}`);
+                                return;
+                            }
+                            
+                            // Crear fechas del período de facturación (solo fecha, sin hora)
+                            const fechaInicio = new Date(periodoFacturacion.startDate);
+                            const fechaFin = new Date(periodoFacturacion.endDate);
+                            
+                            // Verificar si la fecha está fuera del período
+                            if (fechaServicio < fechaInicio || fechaServicio > fechaFin) {
+                                const fechaOriginal = procedimiento.fechaInicioAtencion;
+                                const fechaNueva =  ajustarFechaAlPeriodo(fechaOriginal, periodoFacturacion.endDate);
+                                
+                                procedimiento.fechaInicioAtencion = fechaNueva;
+                                
+                                console.log(`⚠️  Procedimiento[${procedimientoIndex}] - fecha fuera del período:`);
+                                console.log(`   Fecha original: ${fechaOriginal}`);
+                                console.log(`   Período válido: ${periodoFacturacion.startDate} al ${periodoFacturacion.endDate}`);
+                                console.log(`   ✅ Fecha ajustada: ${fechaNueva}`);
+                                ajustesRealizados++;
+                            }
+                            
+                        } catch (error) {
+                            console.error(`❌ Error validando fecha en Procedimiento[${procedimientoIndex}]:`, error.message);
+                            console.error(`   Fecha problemática: ${procedimiento.fechaInicioAtencion}`);
+                        }
+                    }
+                });
+            }
+        //Ajustando servicios esto es personalizado
+        if (usuario.servicios.otrosServicios && usuario.servicios.otrosServicios.length > 0) {
+            usuario.servicios.otrosServicios.forEach(otros => {
+                if (otros.codTecnologiaSalud && otros.codTecnologiaSalud === 'TAB-SC-URBU') {
+                    const antes = otros.codTecnologiaSalud;
+                    otros.codTecnologiaSalud  = `T2387G`;
+                    console.log(`📝 Ajustado codTecnologiaSalud:`);
+                    console.log(`   Antes: ${antes} → Después: ${otros.codTecnologiaSalud}`);
                     ajustesRealizados++;
-                }   
-                  if (otro.fechaSuministroTecnologia) {
-                    const fechaOriginal = otro.fechaSuministroTecnologia;
-                    otro.fechaSuministroTecnologia = validarYajustarFecha(fechaOriginal, index, 'Otros Servicios');
-                    if (otro.fechaSuministroTecnologia !== fechaOriginal) ajustesRealizados++;
                 }
-                
             });
         }
 
-       
-        
+
     });
 
     console.log(`✅ Total de ajustes realizados: ${ajustesRealizados}`);
