@@ -9,7 +9,11 @@
     "manual": "cross-env MODO_EJECUCION=manual node index.js",
     "continuo": "cross-env MODO_EJECUCION=continuo node index.js",
     "programado": "cross-env MODO_EJECUCION=programado node index.js",
-    "test": "node -e \"console.log('Prueba de configuración...'); require('./MicroservicioRIPS'); console.log('✅ Configuración correcta');\""
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration"
   },
   "keywords": [
     "rips",
@@ -29,8 +33,13 @@
     "xmldom": "^0.6.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.27.4",
+    "@babel/preset-env": "^7.27.2",
+    "babel-jest": "^30.0.0",
     "cross-env": "^7.0.3",
-    "nodemon": "^3.0.1"
+    "jest": "^27.5.1",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.1"
   },
   "engines": {
     "node": ">=14.0.0"

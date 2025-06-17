@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const MicroservicioRIPS = require('./src/service/MicroservicioRIPS');
+const MicroservicioRIPS = require('./src/services/MicroservicioRIPS');
 require('dotenv').config();
 
 class JobSchedulerRIPS {
@@ -83,7 +83,7 @@ class JobSchedulerRIPS {
         console.log('═'.repeat(80));
 
         try {
-            await this.microservicio.ejecutar();
+            await this.microservicio.execute();
             this.estadisticas.exitosas++;
             console.log('✅ Ejecución completada exitosamente');
             
