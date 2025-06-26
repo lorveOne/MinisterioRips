@@ -3,10 +3,10 @@ require('dotenv').config();
 module.exports = {
     // Rutas base para carpetas
     paths: {
-        base: process.env.RUTA_BASE_CARPETAS || 'C:\\Users\\USER\\Desktop\\Json_enviar',
-        porEnviar: process.env.RUTA_ARCHIVOS_GENERADOS || 'C:\\Users\\USER\\Desktop\\Json_enviar\\porEnviar',
-        procesados: process.env.RUTA_ARCHIVOSENVIADOS || 'C:\\Users\\USER\\Desktop\\Json_enviar\\procesados',
-        rechazados: process.env.RUTA_ARCHIVOSRECHAZADOS || 'C:\\Users\\USER\\Desktop\\Json_enviar\\rechazados'
+        base: process.env.RUTA_BASE_CARPETAS || '\\cntserver\\02.JSON GENERADOS',
+        porEnviar: process.env.RUTA_ARCHIVOS_GENERADOS || '\\cntserver\\02.JSON GENERADOS\\porEnviar',
+        procesados: process.env.RUTA_ARCHIVOSENVIADOS || '\\cntserver\\02.JSON GENERADOS\\procesados',
+        rechazados: process.env.RUTA_ARCHIVOSRECHAZADOS || '\\cntserver\\02.JSON GENERADOS\\rechazados'
     },
 
     // Configuración SISPRO
