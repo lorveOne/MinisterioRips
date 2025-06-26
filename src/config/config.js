@@ -17,12 +17,12 @@ module.exports = {
         loginData: {
             persona: {
                 identificacion: {
-                    tipo: 'CC',
-                    numero: "4450739"
+                    tipo: process.env.TIPO_USUARIO,
+                    numero: process.env.DOC_USUARIO
                 }
             },
-            clave: "H0sp1t4l2025*",
-            nit: "810000913"
+            clave: process.env.PASSWORD_SISPRO,
+            nit:   process.env.USUARIO_SISPRO
         }
     },
 
