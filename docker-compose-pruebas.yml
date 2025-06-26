@@ -5,10 +5,11 @@ services:
     image: lorve10/ministerio_envio_rips:v2 
     build: .
     volumes:
-      - //cntserver/02.JSON GENERADOS/porEnviar:/app/porEnviar
-      - //cntserver/02.JSON GENERADOS/procesados:/app/procesados  
-      - //cntserver/02.JSON GENERADOS/rechazados:/app/rechazados
-      - //cntserver/02.JSON GENERADOS:/app/Json_enviar
+      - C:/Users/USER/Desktop/Json_enviar/porEnviar:/app/porEnviar
+      - C:/Users/USER/Desktop/Json_enviar/procesados:/app/procesados
+      - C:/Users/USER/Desktop/Json_enviar/rechazados:/app/rechazados
+      - C:/Users/USER/Desktop/Json_enviar:/app/Json_enviar
+
     environment:
       - NODE_ENV=development
       - MODO_EJECUCION=continuo
