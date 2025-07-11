@@ -1,0 +1,30 @@
+version: '3.9'
+
+services:
+  microservicio:
+    image: rips:latest
+    build: .
+    volumes:
+      # Montar solo el directorio padre para evitar problemas entre volúmenes
+      - E:/z01_JSON_GENERALES:/app/z01_JSON_GENERALES
+    
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - MODO_EJECUCION=${MODO_EJECUCION}
+      # Rutas relativas al directorio base
+      - RUTA_ARCHIVOS_GENERADOS=${RUTA_ARCHIVOS_GENERADOS}
+      - RUTA_ARCHIVOSENVIADOS=${RUTA_ARCHIVOSENVIADOS}
+      - RUTA_ARCHIVOSRECHAZADOS=${RUTA_ARCHIVOSRECHAZADOS}
+      - RUTA_BASE_CARPETAS=${RUTA_BASE_CARPETAS}
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - fevrips-net
+
+networks:
+  fevrips-net:
+    external: true
+    name: dockerministerio_salud_fevrips-net

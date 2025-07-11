@@ -476,7 +476,8 @@ class MicroservicioRIPS {
                     estado: 'EXITOSO',
                     fechaProceso: new Date().toISOString(),
                     cuv: foundCuv,
-                    respuestaCompleta: response
+                    respuestaCompleta: response,
+                    numeroFactura: fileName,
                 }, null, 2));
                 
                 return { success: true, response, cuv: foundCuv };
