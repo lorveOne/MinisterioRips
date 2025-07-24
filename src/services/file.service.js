@@ -171,7 +171,7 @@ class FileService {
             }
             
             existingLogs.push(logData);
-            await fs.writeFile(logPath, JSON.stringify(existingLogs, null, 2), 'utf8');
+            await fs.writeFile(logPath, JSON.stringify(existingLogs[0], null, 2), 'utf8');
             
             if (parsedData.response && (state === 'rechazados' || parsedData.guardarRespuesta)) {
                 await this.saveResponseFile(fileName, parsedData.response, filePath);
