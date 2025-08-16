@@ -82,7 +82,26 @@ class FileService {
                          
             // Crear log de procesamiento
             await this.createProcessingLog(fileName, destinationType, additionalData, finalPath, numeroFactura);
-                     
+
+            // Marcar carpeta como procesada o rechazada en el archivo de control
+            // Usar el nombre de la carpeta (numeroFactura) y estado adecuado
+            let estado;
+            let ubicacion;
+            if (destinationType === 'procesados') {
+                estado = 'procesada';
+                ubicacion = 'procesados';
+            } else if (destinationType === 'rechazados') {
+                estado = 'rechazada';
+                ubicacion = 'rechazados';
+            } else {
+                estado = destinationType;
+                ubicacion = destinationType;
+            }
+            // Usar numeroFactura como nombre de carpeta
+            // Para rechazados, guardar la ruta real del archivo como 'ubicacion', para los demás solo el estado
+            const ubicacionFinal = (estado === 'rechazada') ? finalPath : undefined;
+            await this.marcarCarpetaComoProcesada(String(fileName), estado, ubicacionFinal);
+                
         } catch (error) {
             console.log(`⚠️ No se pudo procesar ${fileName}: ${error.message}`);
         }
@@ -92,7 +111,8 @@ class FileService {
             console.log(`📝 Creando log para ${additionalData}`);
             const parsedData = JSON.parse(additionalData);
             const baseName = path.parse(fileName).name;
-            const number = baseName.split('_')[0];
+        // Extraer solo el número (ej: '1598000' de '1598000_ajustado.json')
+        const number = baseName.match(/^\d+/) ? baseName.match(/^\d+/)[0] : baseName;
             
             // Función para extraer ProcesoId de las observaciones
             const extractProcesoId = (resultadosValidacion) => {
@@ -158,7 +178,8 @@ class FileService {
                 };
             }
             
-            const logFileName = state === 'procesados' ? `${numeroFactura}_CUV.json` : `${numeroFactura}_RECHAZADO.json`;
+            // Usar solo el número extraído para el nombre del archivo log
+        const logFileName = state === 'procesados' ? `${number}_CUV.json` : `${number}_RECHAZADO.json`;
             
             const logPath = path.join(path.dirname(filePath), logFileName);
             
@@ -216,6 +237,39 @@ class FileService {
             
         } catch (error) {
             console.log('❌ Error mostrando estado de carpetas');
+        }
+    }
+
+    async marcarCarpetaComoProcesada(numeroFactura, estado, ubicacion) {
+        try {
+            const controlPath = path.join(this.paths.base, '.carpetas_procesadas.json');
+            let controlData = {};
+            // Leer el archivo de control si existe
+            try {
+                const content = await fs.readFile(controlPath, 'utf8');
+                controlData = JSON.parse(content);
+            } catch (error) {
+                // Si no existe, se crea uno nuevo
+                controlData = {};
+            }
+            // Normalizar la clave para que siempre sea solo el número
+            let clave = String(numeroFactura);
+            // Extraer solo dígitos iniciales (ej: '1598000' de '1598000_ajustado.json')
+            const match = clave.match(/^\d+/);
+            if (match) clave = match[0];
+            controlData[clave] = {
+                fechaProcesamiento: new Date().toISOString(),
+                estado
+            };
+            if (ubicacion) {
+                controlData[clave].ubicacion = ubicacion;
+            }
+            
+            // Guardar el archivo actualizado
+            await fs.writeFile(controlPath, JSON.stringify(controlData, null, 2), 'utf8');
+            console.log(`✅ Carpeta ${numeroFactura} marcada/actualizada como '${estado}' en el archivo de control.`);
+        } catch (error) {
+            console.log(`⚠️ Error al marcar carpeta como procesada: ${error.message}`);
         }
     }
 
