@@ -25,7 +25,12 @@ class FileService {
     async moveFile(fileName, destinationType, additionalData, numeroFactura) {
         try {
             const sourcePath = path.join(this.paths.porEnviar, fileName);
+            // Remove _ajustado.json from the filename to get the base directory name
+            const baseFileName = fileName.replace(/_ajustado\.json$/i, '');
+            const sourceDir = path.join(this.paths.base, baseFileName);
             let destinationPath;
+            
+            // Leer y procesar el archivo JSON
             const fileContent = await fs.readFile(sourcePath, 'utf8');
             const jsonData = JSON.parse(fileContent);
             
@@ -46,6 +51,7 @@ class FileService {
             await fs.writeFile(sourcePath, newJsonContent, 'utf8');
             console.log(`📝 Archivo ${fileName} editado - estructura JSON reestructurada`);
             
+            // Determinar la ruta de destino
             switch (destinationType) {
                 case 'procesados':
                     if (!numeroFactura) {
@@ -56,35 +62,67 @@ class FileService {
                     await fs.mkdir(destinationPath, { recursive: true });
                     console.log(`📁 Carpeta creada: ${destinationPath}`);
                     break;
-                                         
+                                             
                 case 'rechazados':
                     // Para rechazados, usar directamente la carpeta rechazados
                     destinationPath = this.paths.rechazados;
                     // Asegurar que la carpeta rechazados existe
                     await fs.mkdir(destinationPath, { recursive: true });
                     break;
-                                         
+                                             
                 default:
                     throw new Error(`Tipo de destino no válido: ${destinationType}`);
             }
-                         
+                             
             // Crear nombre del archivo usando el número de factura
             const extension = path.extname(fileName);
             const newFileName = `${numeroFactura}${extension}`;
             
             // Construir ruta final usando la carpeta correcta
             const finalPath = path.join(destinationPath, newFileName);
-                         
+                             
             // Mover el archivo ya editado
             await fs.rename(sourcePath, finalPath);
-                         
             console.log(`📁 ${fileName} editado y movido a: ${finalPath}`);
-                         
+            
+            // Buscar y mover archivos XML en el mismo directorio
+            try {
+                const files = await fs.readdir(sourceDir);
+                const xmlFiles = files.filter(file => file.toLowerCase().endsWith('.xml'));
+                
+                if (xmlFiles.length > 0) {
+                    console.log(`🔍 Encontrados ${xmlFiles.length} archivos XML en el directorio fuente`);
+                    
+                    for (const xmlFile of xmlFiles) {
+                        const sourceXmlPath = path.join(sourceDir, xmlFile);
+                        const destXmlPath = path.join(destinationPath, xmlFile);
+                        
+                        // Mover el archivo XML
+                        await fs.rename(sourceXmlPath, destXmlPath);
+                        console.log(`📄 Archivo XML ${xmlFile} movido a: ${destXmlPath}`);
+                    }
+                    
+                    // Eliminar el directorio fuente completo después de mover todos los archivos
+                    try {
+                        await fs.rm(sourceDir, { recursive: true, force: true });
+                        console.log(`🗑️ Directorio fuente eliminado: ${sourceDir}`);
+                    } catch (error) {
+                        console.log(`⚠️ No se pudo eliminar el directorio ${sourceDir}:`, error.message);
+                    }
+                }
+            } catch (error) {
+                console.log(`⚠️ Advertencia al procesar archivos XML: ${error.message}`);
+                // Continuar incluso si hay errores con los archivos XML
+            }
+                             
             // Crear log de procesamiento
             await this.createProcessingLog(fileName, destinationType, additionalData, finalPath, numeroFactura);
-                     
+            
+            return { success: true, destinationPath };
+                         
         } catch (error) {
             console.log(`⚠️ No se pudo procesar ${fileName}: ${error.message}`);
+            throw error; // Relanzar el error para que el llamador lo maneje
         }
     }
     async createProcessingLog(fileName, state, additionalData, filePath, numeroFactura) {

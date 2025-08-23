@@ -1,6 +1,8 @@
 const cron = require('node-cron');
 const MicroservicioRIPS = require('./src/services/MicroservicioRIPS');
+const config = require('./src/config/config');
 require('dotenv').config();
+
 
 class JobSchedulerRIPS {
     constructor() {
@@ -14,6 +16,8 @@ class JobSchedulerRIPS {
             fallidas: 0,
             inicioServicio: new Date()
         };
+        this.paths = config.paths;
+        
         
         // Configuración del job desde variables de entorno
         this.cronExpression = process.env.CRON_SCHEDULE || '0 */30 * * * *'; // Cada 30 minutos por defecto
@@ -223,11 +227,90 @@ class JobSchedulerRIPS {
             });
         });
     }
+    
+async validarSiTieneLicencia() {
+    console.log('🔍 Verificando licencia...');
+    console.log('🔑 Token:', this.paths.token);
+    console.log('🌐 URL API:', this.paths.apiLicencia);
+    console.log('👤 UUID Usuario:', this.paths.usuarioLicencia);
+    
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'NodeJS-License-Validator/1.0.0'
+        };
+        
+        // OPCIÓN 1: Agregar token en el header Authorization
+        if (this.paths.token) {
+            headers['Authorization'] = `Bearer ${this.paths.token}`;
+            // O si no funciona con Bearer, prueba:
+            // headers['Authorization'] = this.paths.token;
+            // O tal vez:
+            // headers['X-API-Key'] = this.paths.token;
+        }
+        
+        console.log('📝 Headers enviados:', Object.keys(headers));
+        
+        // OPCIÓN 2: También incluir el token en el body (por si acaso)
+        const requestBody = {
+            uuid: this.paths.usuarioLicencia,
+            version: "1.0.0"
+        };
+        
+        // Si el token también va en el body:
+        if (this.paths.token) {
+            requestBody.token = this.paths.token;
+        }
+        
+        console.log('📦 Body enviado:', requestBody);
+        
+        const response = await fetch(this.paths.apiLicencia, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(requestBody)
+        });
 
+        console.log('📊 Status code:', response.status);
+        console.log('📋 Response headers:', [...response.headers.entries()]);
+
+        // Verificar si la respuesta HTTP es exitosa
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ Error HTTP: ${response.status} - ${response.statusText}`);
+            console.error('❌ Error body:', errorText);
+            return false;
+        }
+
+        // Parsear la respuesta JSON
+        const data = await response.json();
+        console.log('🔍 Respuesta de validación:', data);
+
+        // Verificar el status en los datos de respuesta
+        if (data.status === 'valid' || data.success === true || data.valid === true) {
+            console.log('✅ Licencia válida');
+            return true;
+        } else {
+            console.log('❌ Licencia inválida o expirada:', data.message || data.error || 'Sin mensaje');
+            return false;
+        }
+
+    } catch (error) {
+        console.error('❌ Error al validar licencia:', error);
+        return false;
+    }
+}
     /**
      * Iniciar el scheduler según la configuración
      */
     async iniciar() {
+        const valida = await this.validarSiTieneLicencia();
+        console.log(valida);
+        
+        if(!valida) {
+            console.log('❌ Licencia no válida. Deteniendo scheduler...');
+            process.exit(1);
+        }
+
         this.mostrarInfoScheduler();
         
         let task;

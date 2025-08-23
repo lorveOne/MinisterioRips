@@ -6,7 +6,10 @@ module.exports = {
         base: process.env.RUTA_BASE_CARPETAS || '\\cntserver\\02.JSON GENERADOS',
         porEnviar: process.env.RUTA_ARCHIVOS_GENERADOS || '\\cntserver\\02.JSON GENERADOS\\porEnviar',
         procesados: process.env.RUTA_ARCHIVOSENVIADOS || '\\cntserver\\02.JSON GENERADOS\\procesados',
-        rechazados: process.env.RUTA_ARCHIVOSRECHAZADOS || '\\cntserver\\02.JSON GENERADOS\\rechazados'
+        rechazados: process.env.RUTA_ARCHIVOSRECHAZADOS || '\\cntserver\\02.JSON GENERADOS\\rechazados',
+        apiLicencia: process.env.URL_LICENCIA || 'http://147.182.141.131:81/api/licencia/check',
+        usuarioLicencia: process.env.USUARIO_LICENCIA || '810000913-8',
+        token: process.env.TOKEN_LICENCIA || 'base64:Q+Y2vX7T6LjarpUrteG1CBRm8bBnLjNPVKGDUKhV/VM=',
     },
 
     // Configuración SISPRO
