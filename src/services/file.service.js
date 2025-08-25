@@ -64,10 +64,13 @@ class FileService {
                     break;
                                              
                 case 'rechazados':
-                    // Para rechazados, usar directamente la carpeta rechazados
-                    destinationPath = this.paths.rechazados;
-                    // Asegurar que la carpeta rechazados existe
+                    if (!numeroFactura) {
+                        throw new Error('Se requiere numeroFactura para mover a rechazados');
+                    }
+                    // Crear carpeta con número de factura dentro de rechazados
+                    destinationPath = path.join(this.paths.rechazados, String(numeroFactura));
                     await fs.mkdir(destinationPath, { recursive: true });
+                    console.log(`📁 Carpeta de rechazados creada: ${destinationPath}`);
                     break;
                                              
                 default:
@@ -86,7 +89,35 @@ class FileService {
             console.log(`📁 ${fileName} editado y movido a: ${finalPath}`);
             if (destinationType === 'rechazados') {
                 console.log(`❌ ${fileName} movido a rechazados`);
-            }else{
+                // Mover archivos XML a la carpeta de rechazados
+                try {
+                    const files = await fs.readdir(sourceDir);
+                    const xmlFiles = files.filter(file => file.toLowerCase().endsWith('.xml'));
+                    
+                    if (xmlFiles.length > 0) {
+                        console.log(`🔍 Encontrados ${xmlFiles.length} archivos XML en el directorio fuente`);
+                        
+                        for (const xmlFile of xmlFiles) {
+                            const sourceXmlPath = path.join(sourceDir, xmlFile);
+                            const destXmlPath = path.join(destinationPath, xmlFile);
+                            
+                            // Mover el archivo XML
+                            await fs.rename(sourceXmlPath, destXmlPath);
+                            console.log(`📄 Archivo XML ${xmlFile} movido a: ${destXmlPath}`);
+                        }
+                    }
+                    
+                    // Intentar eliminar el directorio fuente si está vacío
+                    try {
+                        await fs.rm(sourceDir, { recursive: true, force: true });
+                        console.log(`🗑️ Directorio fuente eliminado: ${sourceDir}`);
+                    } catch (error) {
+                        console.log(`⚠️ No se pudo eliminar el directorio ${sourceDir}:`, error.message);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Advertencia al procesar archivos XML en rechazados: ${error.message}`);
+                }
+            } else {
                  // Buscar y mover archivos XML en el mismo directorio
                 try {
                     const files = await fs.readdir(sourceDir);
