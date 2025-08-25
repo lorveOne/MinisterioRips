@@ -84,36 +84,40 @@ class FileService {
             // Mover el archivo ya editado
             await fs.rename(sourcePath, finalPath);
             console.log(`📁 ${fileName} editado y movido a: ${finalPath}`);
-            
-            // Buscar y mover archivos XML en el mismo directorio
-            try {
-                const files = await fs.readdir(sourceDir);
-                const xmlFiles = files.filter(file => file.toLowerCase().endsWith('.xml'));
-                
-                if (xmlFiles.length > 0) {
-                    console.log(`🔍 Encontrados ${xmlFiles.length} archivos XML en el directorio fuente`);
+            if (destinationType === 'rechazados') {
+                console.log(`❌ ${fileName} movido a rechazados`);
+            }else{
+                 // Buscar y mover archivos XML en el mismo directorio
+                try {
+                    const files = await fs.readdir(sourceDir);
+                    const xmlFiles = files.filter(file => file.toLowerCase().endsWith('.xml'));
                     
-                    for (const xmlFile of xmlFiles) {
-                        const sourceXmlPath = path.join(sourceDir, xmlFile);
-                        const destXmlPath = path.join(destinationPath, xmlFile);
+                    if (xmlFiles.length > 0) {
+                        console.log(`🔍 Encontrados ${xmlFiles.length} archivos XML en el directorio fuente`);
                         
-                        // Mover el archivo XML
-                        await fs.rename(sourceXmlPath, destXmlPath);
-                        console.log(`📄 Archivo XML ${xmlFile} movido a: ${destXmlPath}`);
+                        for (const xmlFile of xmlFiles) {
+                            const sourceXmlPath = path.join(sourceDir, xmlFile);
+                            const destXmlPath = path.join(destinationPath, xmlFile);
+                            
+                            // Mover el archivo XML
+                            await fs.rename(sourceXmlPath, destXmlPath);
+                            console.log(`📄 Archivo XML ${xmlFile} movido a: ${destXmlPath}`);
+                        }
+                        
+                        // Eliminar el directorio fuente completo después de mover todos los archivos
+                        try {
+                            await fs.rm(sourceDir, { recursive: true, force: true });
+                            console.log(`🗑️ Directorio fuente eliminado: ${sourceDir}`);
+                        } catch (error) {
+                            console.log(`⚠️ No se pudo eliminar el directorio ${sourceDir}:`, error.message);
+                        }
                     }
-                    
-                    // Eliminar el directorio fuente completo después de mover todos los archivos
-                    try {
-                        await fs.rm(sourceDir, { recursive: true, force: true });
-                        console.log(`🗑️ Directorio fuente eliminado: ${sourceDir}`);
-                    } catch (error) {
-                        console.log(`⚠️ No se pudo eliminar el directorio ${sourceDir}:`, error.message);
-                    }
+                } catch (error) {
+                    console.log(`⚠️ Advertencia al procesar archivos XML: ${error.message}`);
+                    // Continuar incluso si hay errores con los archivos XML
                 }
-            } catch (error) {
-                console.log(`⚠️ Advertencia al procesar archivos XML: ${error.message}`);
-                // Continuar incluso si hay errores con los archivos XML
             }
+           
                              
             // Crear log de procesamiento
             await this.createProcessingLog(fileName, destinationType, additionalData, finalPath, numeroFactura);
