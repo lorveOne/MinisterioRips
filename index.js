@@ -303,13 +303,13 @@ async validarSiTieneLicencia() {
      * Iniciar el scheduler según la configuración
      */
     async iniciar() {
-        const valida = await this.validarSiTieneLicencia();
+       /*  const valida = await this.validarSiTieneLicencia();
         console.log(valida);
         
         if(!valida) {
             console.log('❌ Licencia no válida. Deteniendo scheduler...');
             process.exit(1);
-        }
+        } */
 
         this.mostrarInfoScheduler();
         

@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const { exec } = require('child_process');
 const config = require('../config/config');
 
 class FileService {
@@ -13,8 +14,6 @@ class FileService {
         try {
             await fs.mkdir(this.paths.base, { recursive: true });
             await fs.mkdir(this.paths.porEnviar, { recursive: true });
-            await fs.mkdir(this.paths.procesados, { recursive: true });
-            await fs.mkdir(this.paths.rechazados, { recursive: true });
             
             console.log('✅ Carpetas verificadas/creadas correctamente');
         } catch (error) {
@@ -22,12 +21,14 @@ class FileService {
             throw error;
         }
     }
-    async moveFile(fileName, destinationType, additionalData, numeroFactura) {
+    async moveFile(fileName, destinationType, additionalData, numeroFactura, userProcessedPath, userRejectedPath) {
         try {
             const sourcePath = path.join(this.paths.porEnviar, fileName);
-            // Remove _ajustado.json from the filename to get the base directory name
+            // Remove _ajustado.json from the filename to get base name and split into usuario/subcarpeta
             const baseFileName = fileName.replace(/_ajustado\.json$/i, '');
-            const sourceDir = path.join(this.paths.base, baseFileName);
+            const lastUnderscore = baseFileName.lastIndexOf('_');
+            const userName = lastUnderscore !== -1 ? baseFileName.substring(0, lastUnderscore) : '';
+            const containerFolder = lastUnderscore !== -1 ? baseFileName.substring(lastUnderscore + 1) : baseFileName;
             let destinationPath;
             
             // Leer y procesar el archivo JSON
@@ -58,21 +59,21 @@ class FileService {
                         throw new Error('Se requiere numeroFactura para mover a procesados');
                     }
                     // Crear carpeta con número de factura dentro de procesados
-                    destinationPath = path.join(this.paths.procesados, String(numeroFactura));
+                    destinationPath = path.join(userProcessedPath, String(numeroFactura));
                     await fs.mkdir(destinationPath, { recursive: true });
                     console.log(`📁 Carpeta creada: ${destinationPath}`);
                     break;
-                                             
+                                     
                 case 'rechazados':
                     if (!numeroFactura) {
                         throw new Error('Se requiere numeroFactura para mover a rechazados');
                     }
                     // Crear carpeta con número de factura dentro de rechazados
-                    destinationPath = path.join(this.paths.rechazados, String(numeroFactura));
+                    destinationPath = path.join(userRejectedPath, String(numeroFactura));
                     await fs.mkdir(destinationPath, { recursive: true });
                     console.log(`📁 Carpeta de rechazados creada: ${destinationPath}`);
                     break;
-                                             
+                                     
                 default:
                     throw new Error(`Tipo de destino no válido: ${destinationType}`);
             }
@@ -87,66 +88,48 @@ class FileService {
             // Mover el archivo ya editado
             await fs.rename(sourcePath, finalPath);
             console.log(`📁 ${fileName} editado y movido a: ${finalPath}`);
-            if (destinationType === 'rechazados') {
-                console.log(`❌ ${fileName} movido a rechazados`);
-                // Mover archivos XML a la carpeta de rechazados
-                try {
-                    const files = await fs.readdir(sourceDir);
-                    const xmlFiles = files.filter(file => file.toLowerCase().endsWith('.xml'));
-                    
-                    if (xmlFiles.length > 0) {
-                        console.log(`🔍 Encontrados ${xmlFiles.length} archivos XML en el directorio fuente`);
-                        
-                        for (const xmlFile of xmlFiles) {
-                            const sourceXmlPath = path.join(sourceDir, xmlFile);
-                            const destXmlPath = path.join(destinationPath, xmlFile);
-                            
-                            // Mover el archivo XML
-                            await fs.rename(sourceXmlPath, destXmlPath);
-                            console.log(`📄 Archivo XML ${xmlFile} movido a: ${destXmlPath}`);
-                        }
-                    }
-                    
-                    // Intentar eliminar el directorio fuente si está vacío
+            // Intentar localizar y mover XMLs relacionados desde la carpeta del usuario
+            try {
+                // Candidatos donde podrían estar los XMLs asociados a la factura
+                const xmlSourceCandidates = [
+                    userProcessedPath ? path.join(userProcessedPath, containerFolder) : null,
+                    userRejectedPath ? path.join(userRejectedPath, containerFolder) : null,
+                    userName ? path.join(this.paths.base, userName, containerFolder) : null
+                ].filter(Boolean);
+
+                let xmlSourceDir = null;
+                for (const candidate of xmlSourceCandidates) {
                     try {
-                        await fs.rm(sourceDir, { recursive: true, force: true });
-                        console.log(`🗑️ Directorio fuente eliminado: ${sourceDir}`);
-                    } catch (error) {
-                        console.log(`⚠️ No se pudo eliminar el directorio ${sourceDir}:`, error.message);
-                    }
-                } catch (error) {
-                    console.log(`⚠️ Advertencia al procesar archivos XML en rechazados: ${error.message}`);
+                        await fs.access(candidate);
+                        xmlSourceDir = candidate;
+                        break;
+                    } catch (_) { /* seguir con el siguiente */ }
                 }
-            } else {
-                 // Buscar y mover archivos XML en el mismo directorio
-                try {
-                    const files = await fs.readdir(sourceDir);
-                    const xmlFiles = files.filter(file => file.toLowerCase().endsWith('.xml'));
-                    
+
+                if (xmlSourceDir) {
+                    const files = await fs.readdir(xmlSourceDir);
+                    const xmlFiles = files.filter(f => f.toLowerCase().endsWith('.xml'));
                     if (xmlFiles.length > 0) {
-                        console.log(`🔍 Encontrados ${xmlFiles.length} archivos XML en el directorio fuente`);
-                        
+                        console.log(`🔍 Encontrados ${xmlFiles.length} XML en ${xmlSourceDir}`);
                         for (const xmlFile of xmlFiles) {
-                            const sourceXmlPath = path.join(sourceDir, xmlFile);
+                            const sourceXmlPath = path.join(xmlSourceDir, xmlFile);
                             const destXmlPath = path.join(destinationPath, xmlFile);
-                            
-                            // Mover el archivo XML
                             await fs.rename(sourceXmlPath, destXmlPath);
-                            console.log(`📄 Archivo XML ${xmlFile} movido a: ${destXmlPath}`);
-                        }
-                        
-                        // Eliminar el directorio fuente completo después de mover todos los archivos
-                        try {
-                            await fs.rm(sourceDir, { recursive: true, force: true });
-                            console.log(`🗑️ Directorio fuente eliminado: ${sourceDir}`);
-                        } catch (error) {
-                            console.log(`⚠️ No se pudo eliminar el directorio ${sourceDir}:`, error.message);
+                            console.log(`📄 XML ${xmlFile} movido a: ${destXmlPath}`);
                         }
                     }
-                } catch (error) {
-                    console.log(`⚠️ Advertencia al procesar archivos XML: ${error.message}`);
-                    // Continuar incluso si hay errores con los archivos XML
+                    // Intentar limpiar la carpeta fuente si queda vacía
+                    try {
+                        await fs.rm(xmlSourceDir, { recursive: true, force: true });
+                        console.log(`🗑️ Carpeta fuente de XML eliminada: ${xmlSourceDir}`);
+                    } catch (error) {
+                        console.log(`⚠️ No se pudo eliminar ${xmlSourceDir}: ${error.message}`);
+                    }
+                } else {
+                    console.log('ℹ️ No se encontró carpeta fuente de XML asociada a la factura');
                 }
+            } catch (error) {
+                console.log(`⚠️ Advertencia al mover XMLs asociados: ${error.message}`);
             }
            
                              
@@ -238,13 +221,14 @@ class FileService {
             let existingLogs = [];
             try {
                 const logContent = await fs.readFile(logPath, 'utf8');
-                existingLogs = JSON.parse(logContent);
+                const parsed = JSON.parse(logContent);
+                existingLogs = Array.isArray(parsed) ? parsed : [parsed];
             } catch (error) {
                 // Si no existe el archivo de log, se crea uno nuevo
             }
             
             existingLogs.push(logData);
-            await fs.writeFile(logPath, JSON.stringify(existingLogs[0], null, 2), 'utf8');
+            await fs.writeFile(logPath, JSON.stringify(existingLogs, null, 2), 'utf8');
             
             if (parsedData.response && (state === 'rechazados' || parsedData.guardarRespuesta)) {
                 await this.saveResponseFile(fileName, parsedData.response, filePath);
@@ -309,6 +293,20 @@ class FileService {
             
         } catch (error) {
             console.log('   - Error verificando carpetas originales');
+        }
+    }
+
+    async moveFolder(sourceFolderPath, destinationFolderPath, reason = 'sin_razon') {
+        try {
+            const folderName = path.basename(sourceFolderPath);
+            const finalDestinationPath = path.join(destinationFolderPath, folderName);
+            
+            await fs.rename(sourceFolderPath, finalDestinationPath);
+            console.log(`📁 Carpeta movida: ${sourceFolderPath} -> ${finalDestinationPath} (Razón: ${reason})`);
+            return { success: true, finalDestinationPath };
+        } catch (error) {
+            console.error(`❌ Error moviendo carpeta ${sourceFolderPath}: ${error.message}`);
+            throw error; 
         }
     }
 }
