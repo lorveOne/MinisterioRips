@@ -115,7 +115,7 @@ Para soporte, por favor abrir un issue en el repositorio del proyecto.
 
 
 ## subir al Docker 
-docker tag ministerio_envio_rips:latest lorve10/ministerio_envio_rips:v1
+docker tag ministerio_envio_rips:latest lorve10/ministerio_envio_rips:v1_alluser
 
-docker tag ministerio_envio_rips:v1 lorve10/ministerio_envio_rips:v1
-docker push lorve10/ministerio_envio_rips:v1
+docker tag ministerio_envio_rips:v1_alluser lorve10/ministerio_envio_rips:v1_alluser
+docker push lorve10/ministerio_envio_rips:v1_alluser

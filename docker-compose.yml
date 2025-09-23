@@ -2,7 +2,7 @@
 version: '3.9'
 services:
   microservicio:
-    image: ministerio_envio_rips:latest
+    image: lorve10/ministerio_envio_rips:v1_alluser
     build: .
     volumes:
       - C:/Users/lsanc/Desktop/Json_enviar:/app/Json_enviar

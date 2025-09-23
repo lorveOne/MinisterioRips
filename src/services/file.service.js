@@ -217,18 +217,8 @@ class FileService {
             const logFileName = state === 'procesados' ? `${numeroFactura}_CUV.json` : `${numeroFactura}_RECHAZADO.json`;
             
             const logPath = path.join(path.dirname(filePath), logFileName);
-            
-            let existingLogs = [];
-            try {
-                const logContent = await fs.readFile(logPath, 'utf8');
-                const parsed = JSON.parse(logContent);
-                existingLogs = Array.isArray(parsed) ? parsed : [parsed];
-            } catch (error) {
-                // Si no existe el archivo de log, se crea uno nuevo
-            }
-            
-            existingLogs.push(logData);
-            await fs.writeFile(logPath, JSON.stringify(existingLogs, null, 2), 'utf8');
+            // Escribir el log como un OBJETO (no arreglo). Si existe, se sobrescribe.
+            await fs.writeFile(logPath, JSON.stringify(logData, null, 2), 'utf8');
             
             if (parsedData.response && (state === 'rechazados' || parsedData.guardarRespuesta)) {
                 await this.saveResponseFile(fileName, parsedData.response, filePath);
