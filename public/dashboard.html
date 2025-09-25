@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Procesamiento Carpetas</title>
+    <!-- SweetAlert2 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📂 Dashboard de Procesamiento</h1>
+            <p>Sistema de gestión y monitoreo de carpetas</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <button id="playBtn" class="btn btn-primary">
+                    <span>▶️</span> Iniciar Procesamiento
+                </button>
+                <button id="stopBtn" class="btn btn-danger">
+                    <span>⏹️</span> Detener Procesamiento
+                </button>
+            </div>
+            <div id="estadoProceso" class="estado-proceso">
+                <div class="loading"></div>
+                Consultando estado...
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalProcesadas">0</div>
+                <div class="stat-label">Carpetas Procesadas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalRechazadas">0</div>
+                <div class="stat-label">Carpetas Rechazadas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalHoy">0</div>
+                <div class="stat-label">Procesadas Hoy</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="tasaProcesamiento">0%</div>
+                <div class="stat-label">Tasa de Éxito</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="todas">
+                📁 Carpetas Procesadas
+            </button>
+            <button class="tab-btn" data-tab="rechazadas">
+                ❌ Carpetas Rechazadas
+            </button>
+        </div>
+
+        <div id="tab-todas" class="tab-content active">
+            <div class="tab-header">
+                <input type="text" id="searchTodas" class="search-input" 
+                       placeholder="🔍 Buscar por nombre...">
+            </div>
+            
+            <div class="table-container">
+                <table id="carpetasTable">
+                    <thead>
+                        <tr>
+                            <th>📁 Nombre Carpeta</th>
+                            <th>📅 Fecha Procesamiento</th>
+                            <th>⚙️ Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Las filas se cargan dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="pagination" id="paginationTodas"></div>
+        </div>
+
+        <div id="tab-rechazadas" class="tab-content">
+            <div class="tab-header">
+                <input type="text" id="searchRechazadas" class="search-input" 
+                       placeholder="🔍 Buscar por nombre...">
+                <button id="eliminarRechazadasBtn" class="btn btn-danger">
+                    🗑️ Limpiar Rechazadas
+                </button>
+            </div>
+            
+            <div class="table-container">
+                <table id="rechazadosTable">
+                    <thead>
+                        <tr>
+                            <th>📁 Nombre Carpeta</th>
+                            <th>📅 Fecha Procesamiento</th>
+                            <th>⚙️ Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Las filas se cargan dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="pagination" id="paginationRechazadas"></div>
+        </div>
+    </div>
+
+    <script>
+        // =====================
+        // Variables globales dashboard
+        // =====================
+        let todasCarpetas = [];
+        let rechazadasCarpetas = [];
+        let currentPageTodas = 1;
+        let currentPageRechazadas = 1;
+        const itemsPerPage = 10;
+        let searchTermTodas = '';
+        let searchTermRechazadas = '';
+
+        // =====================
+        // Renderizado de tablas
+        // =====================
+
+        function renderTableCarpetas() {
+            const tbody = document.querySelector('#carpetasTable tbody');
+            tbody.innerHTML = '';
+            
+            let filtradas = todasCarpetas.filter(c =>
+                c.nombre.toLowerCase().includes(searchTermTodas)
+            );
+            
+            if (filtradas.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="empty-state">
+                            <h3>📂 No hay carpetas procesadas</h3>
+                            <p>Las carpetas aparecerán aquí una vez que sean procesadas</p>
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('paginationTodas').innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(filtradas.length / itemsPerPage) || 1;
+            currentPageTodas = Math.min(currentPageTodas, totalPages);
+            const start = (currentPageTodas - 1) * itemsPerPage;
+            const pageItems = filtradas.slice(start, start + itemsPerPage);
+            
+            for (const c of pageItems) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${c.nombre}</td>
+                    <td>${c.fechaProcesamiento ? new Date(c.fechaProcesamiento).toLocaleString() : '-'}</td>
+                    <td>
+                        <button class="acciones-btn" onclick="abrirCarpeta('${c.ruta.replace(/\\/g, '\\\\')}')">
+                            📂 Abrir Carpeta
+                        </button>
+                        <button class="acciones-btn" onclick="copiarRuta('${c.ruta.replace(/\\/g, '\\\\')}')">
+                            📋 Copiar Ruta
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+            
+            renderPagination('paginationTodas', totalPages, currentPageTodas, (page) => { 
+                currentPageTodas = page; 
+                renderTableCarpetas(); 
+            });
+            
+            // Actualizar estadísticas
+            updateStats();
+        }
+
+        function renderTableRechazadas() {
+            const tbody = document.querySelector('#rechazadosTable tbody');
+            tbody.innerHTML = '';
+            
+            let filtradas = rechazadasCarpetas.filter(c =>
+                c.nombre.toLowerCase().includes(searchTermRechazadas)
+            );
+            
+            if (filtradas.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="empty-state">
+                            <h3>✅ No hay carpetas rechazadas</h3>
+                            <p>¡Excelente! Todas las carpetas han sido procesadas correctamente</p>
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('paginationRechazadas').innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(filtradas.length / itemsPerPage) || 1;
+            currentPageRechazadas = Math.min(currentPageRechazadas, totalPages);
+            const start = (currentPageRechazadas - 1) * itemsPerPage;
+            const pageItems = filtradas.slice(start, start + itemsPerPage);
+            
+            for (const c of pageItems) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${c.nombre}</td>
+                    <td>${c.fechaProcesamiento ? new Date(c.fechaProcesamiento).toLocaleString() : '-'}</td>
+                    <td>
+                        <button class="acciones-btn" onclick="verErroresRechazo('${c.nombre}')">
+                            👁️ Ver Errores
+                        </button>
+                        <button class="acciones-btn" onclick="eliminarCarpeta('${c.nombre}')">
+                            🗑️ Eliminar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+            
+            renderPagination('paginationRechazadas', totalPages, currentPageRechazadas, (page) => { 
+                currentPageRechazadas = page; 
+                renderTableRechazadas(); 
+            });
+            
+            // Actualizar estadísticas
+            updateStats();
+        }
+
+        function updateStats() {
+            document.getElementById('totalProcesadas').textContent = todasCarpetas.length.toLocaleString();
+            document.getElementById('totalRechazadas').textContent = rechazadasCarpetas.length.toLocaleString();
+            
+            // Calcular procesadas hoy
+            const hoy = new Date().toDateString();
+            const procesadasHoy = todasCarpetas.filter(c => {
+                if (!c.fechaProcesamiento) return false;
+                return new Date(c.fechaProcesamiento).toDateString() === hoy;
+            }).length;
+            document.getElementById('totalHoy').textContent = procesadasHoy.toLocaleString();
+            
+            // Calcular tasa de éxito
+            const total = todasCarpetas.length + rechazadasCarpetas.length;
+            const tasa = total > 0 ? ((todasCarpetas.length / total) * 100).toFixed(1) : 0;
+            document.getElementById('tasaProcesamiento').textContent = tasa + '%';
+        }
+
+        function abrirCarpeta(ruta) {
+            fetch('/api/abrir-carpeta', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ruta })
+            }).then(() => {
+                Swal.fire({
+                    title: '📂 Carpeta Abierta',
+                    text: 'La carpeta se ha abierto en el explorador de archivos',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            }).catch(() => {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'No se pudo abrir la carpeta',
+                    icon: 'error',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            });
+        }
+
+        function copiarRuta(ruta) {
+            navigator.clipboard.writeText(ruta).then(() => {
+                Swal.fire({
+                    title: '📋 Ruta Copiada',
+                    text: 'La ruta se ha copiado al portapapeles',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            }).catch(() => {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'No se pudo copiar la ruta',
+                    icon: 'error',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            });
+        }
+
+        async function verErroresRechazo(nombre) {
+            try {
+                const resp = await fetch(`/api/rechazo-errores/${encodeURIComponent(nombre)}`);
+                const data = await resp.json();
+                mostrarErroresCard(nombre, data.errores || [], data.infoFactura || {});
+            } catch (e) {
+                mostrarErroresCard(nombre, [{Descripcion: 'No se pudo obtener el detalle de errores', PathFuente: ''}], {});
+            }
+        }
+
+        function mostrarErroresCard(nombre, errores, infoFactura = {}) {
+            let html = `<div style='text-align:left;'>`;
+            html += `<h3 style='margin-top:0; color:#e74c3c;'>❌ Errores de rechazo para: ${nombre}</h3>`;
+            
+            if (infoFactura && Object.keys(infoFactura).length > 0) {
+                html += `<div style='margin-bottom:20px; padding:15px; background:#f8f9fa; border-radius:10px;'>
+                    <h4 style='margin-top:0; color:#2c3e50;'>📄 Información de la Factura</h4>
+                    <p><b>Número de Factura:</b> ${infoFactura.NumFactura || '-'}</p>
+                    <p><b>Fecha de Radicación:</b> ${infoFactura.FechaRadicacion ? new Date(infoFactura.FechaRadicacion).toLocaleString() : '-'}</p>
+                    <p><b>Código Único de Validación:</b> ${infoFactura.CodigoUnicoValidacion || '-'}</p>
+                    <p><b>Estado del Resultado:</b> ${infoFactura.ResultState ? '✅ Válido' : '❌ Inválido'}</p>
+                </div>`;
+            }
+            
+            if (!errores.length) {
+                html += '<div style="padding:20px; text-align:center; color:#27ae60;"><h4>✅ No hay errores de rechazo registrados</h4></div>';
+            } else {
+                html += `<div style="overflow-x:auto;">
+                    <table class='tabla-modal-errores'>
+                        <thead>
+                            <tr>
+                                <th>🏷️ Clase</th>
+                                <th>🔢 Código</th>
+                                <th>📝 Descripción</th>
+                                <th>💬 Observaciones</th>
+                                <th>📂 Archivo Fuente</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                        
+                for (let i = 0; i < errores.length; i++) {
+                    const err = errores[i];
+                    html += `<tr>
+                        <td>${err.Clase || 'RECHAZADO'}</td>
+                        <td>${err.Codigo || '-'}</td>
+                        <td>${err.Descripcion || '-'}</td>
+                        <td>${err.Observaciones || '-'}</td>
+                        <td style="word-break: break-all;">${err.PathFuente || '-'}</td>
+                    </tr>`;
+                }
+                html += '</tbody></table></div>';
+            }
+            html += `</div>`;
+            
+            Swal.fire({
+                title: '',
+                html: html,
+                width: '90vw',
+                padding: '2em',
+                background: '#f9fafd',
+                showCloseButton: true,
+                showConfirmButton: false,
+                customClass: {
+                    popup: 'swal2-modal-rechazo swal2-modal-rechazo-xl'
+                }
+            });
+        }
+
+        function renderPagination(containerId, totalPages, currentPage, onPageChange) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            if (totalPages <= 1) return;
+            
+            for (let i = 1; i <= totalPages; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.className = i === currentPage ? 'active' : '';
+                btn.onclick = () => onPageChange(i);
+                container.appendChild(btn);
+            }
+        }
+
+        async function cargarCarpetas() {
+            try {
+                // Procesadas
+                const resp = await fetch('/api/carpetas');
+                const data = await resp.json();
+                todasCarpetas = [];
+                for (const [nombre, info] of Object.entries(data)) {
+                    const obj = {
+                        nombre,
+                        fechaProcesamiento: info.fechaProcesamiento,
+                        ruta: info.ruta
+                    };
+                    todasCarpetas.push(obj);
+                }
+
+                // Rechazadas
+                try {
+                    const respRech = await fetch('/api/carpeta-rechazadas');
+                    const dataRech = await respRech.json();
+                    rechazadasCarpetas = dataRech.map(item => ({
+                        nombre: item.nombre,
+                        fechaProcesamiento: item.fechaProcesamiento,
+                        estado: item.estado,
+                        ubicacion: item.ubicacion
+                    }));
+                } catch (e) {
+                    rechazadasCarpetas = [];
+                }
+
+                renderTableCarpetas();
+                renderTableRechazadas();
+            } catch (error) {
+                console.error('Error cargando carpetas:', error);
+                Swal.fire({
+                    title: 'Error',
+                    text: 'No se pudieron cargar las carpetas',
+                    icon: 'error',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            }
+        }
+
+        async function reprocesarCarpeta(nombre) {
+            const result = await Swal.fire({
+                title: '🔄 ¿Reprocesar carpeta?',
+                text: `¿Estás seguro de que quieres reprocesar "${nombre}"?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, reprocesar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#27ae60',
+                cancelButtonColor: '#95a5a6'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    await fetch(`/api/carpeta/${encodeURIComponent(nombre)}/reprocesar`, { method: 'POST' });
+                    Swal.fire({
+                        title: '✅ Reprocesando',
+                        text: 'La carpeta se está reprocesando',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    cargarCarpetas();
+                } catch (error) {
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'No se pudo reprocesar la carpeta',
+                        icon: 'error',
+                        timer: 3000,
+                        showConfirmButton: false
+                    });
+                }
+            }
+        }
+
+        async function eliminarCarpeta(nombre) {
+            const result = await Swal.fire({
+                title: '🗑️ ¿Eliminar carpeta rechazada?',
+                text: `¿Estás seguro de que quieres eliminar "${nombre}" del control?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#e74c3c',
+                cancelButtonColor: '#95a5a6'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    await fetch(`/api/carpeta/${encodeURIComponent(nombre)}`, { method: 'DELETE' });
+                    Swal.fire({
+                        title: '✅ Eliminada',
+                        text: 'La carpeta ha sido eliminada del control',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    cargarCarpetas();
+                } catch (error) {
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'No se pudo eliminar la carpeta',
+                        icon: 'error',
+                        timer: 3000,
+                        showConfirmButton: false
+                    });
+                }
+            }
+        }
+
+        // =====================
+        // Event Listeners
+        // =====================
+
+        document.getElementById('playBtn').onclick = async () => {
+            Swal.fire({
+                title: '🚀 Iniciando procesamiento...',
+                text: 'El sistema está comenzando a procesar las carpetas',
+                allowOutsideClick: false,
+                didOpen: () => { 
+                    Swal.showLoading(); 
+                }
+            });
+            
+            try {
+                await fetch('/api/procesar', { method: 'POST' });
+                Swal.close();
+                Swal.fire({
+                    title: '✅ ¡Procesamiento Iniciado!',
+                    text: 'El sistema está procesando las carpetas',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                cargarCarpetas();
+                actualizarEstadoProceso();
+            } catch (error) {
+                Swal.close();
+                Swal.fire({
+                    title: 'Error',
+                    text: 'No se pudo iniciar el procesamiento',
+                    icon: 'error',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            }
+        };
+
+        document.getElementById('stopBtn').onclick = async () => {
+            const result = await Swal.fire({
+                title: '⏹️ ¿Detener procesamiento?',
+                text: 'Esto pausará el procesamiento de carpetas',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, detener',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#e74c3c',
+                cancelButtonColor: '#95a5a6'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    await fetch('/api/detener', { method: 'POST' });
+                    Swal.fire({
+                        title: '⏸️ Procesamiento Detenido',
+                        text: 'El sistema ha pausado el procesamiento',
+                        icon: 'info',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    actualizarEstadoProceso();
+                } catch (error) {
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'No se pudo detener el procesamiento',
+                        icon: 'error',
+                        timer: 3000,
+                        showConfirmButton: false
+                    });
+                }
+            }
+        };
+
+        // --- Eliminar rechazadas del control ---
+        const eliminarRechazadasBtn = document.getElementById('eliminarRechazadasBtn');
+        if (eliminarRechazadasBtn) {
+            eliminarRechazadasBtn.onclick = async () => {
+                const result = await Swal.fire({
+                    title: '🗑️ ¿Eliminar todas las rechazadas?',
+                    html: '<div style="color:#e74c3c;font-weight:bold; margin-top:10px;">⚠️ Esto solo las quita del control, no borra archivos físicos.<br>Las carpetas podrán reprocesarse.</div>',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, eliminar todas',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: '#e74c3c',
+                    cancelButtonColor: '#95a5a6',
+                    customClass: {
+                        popup: 'swal2-modal-rechazo'
+                    }
+                });
+                
+                if (result.isConfirmed) {
+                    try {
+                        const resp = await fetch('/api/carpetas/eliminar-rechazadas', { method: 'POST' });
+                        const data = await resp.json();
+                        if (data.ok) {
+                            await Swal.fire({
+                                title: '✅ ¡Listo!',
+                                html: `<div style="font-size:1.1rem;"><b>Eliminadas del control:</b> <span style='color:#27ae60; font-weight:bold;'>${data.eliminadas.length}</span> carpetas</div>`,
+                                icon: 'success',
+                                timer: 3000,
+                                showConfirmButton: false
+                            });
+                            cargarCarpetas();
+                        } else {
+                            Swal.fire('Error', 'No se pudieron eliminar las carpetas.', 'error');
+                        }
+                    } catch (e) {
+                        Swal.fire('Error', 'Error de conexión con el servidor.', 'error');
+                    }
+                }
+            };
+        }
+
+        // --- Tabs funcionales ---
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                tabBtns.forEach(b => b.classList.remove('active'));
+                tabContents.forEach(tc => tc.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+            });
+        });
+
+        // --- Buscadores reactivos ---
+        document.getElementById('searchTodas').addEventListener('input', function() {
+            searchTermTodas = this.value.trim().toLowerCase();
+            currentPageTodas = 1;
+            renderTableCarpetas();
+        });
+
+        document.getElementById('searchRechazadas').addEventListener('input', function() {
+            searchTermRechazadas = this.value.trim().toLowerCase();
+            currentPageRechazadas = 1;
+            renderTableRechazadas();
+        });
+
+        async function actualizarEstadoProceso() {
+            const span = document.getElementById('estadoProceso');
+            try {
+                const resp = await fetch('/api/estado-proceso');
+                const data = await resp.json();
+                if (data.enEjecucion) {
+                    span.innerHTML = '🟢 En ejecución';
+                    span.className = 'estado-proceso ejecucion';
+                } else {
+                    span.innerHTML = '🔴 Detenido';
+                    span.className = 'estado-proceso detenido';
+                }
+            } catch {
+                span.innerHTML = '⚠️ Estado desconocido';
+                span.className = 'estado-proceso';
+            }
+        }
+
+        // =====================
+        // Inicialización y Auto-refresh
+        // =====================
+
+        // Auto-refresh cada 5 segundos
+        setInterval(() => {
+            cargarCarpetas();
+            actualizarEstadoProceso();
+        }, 5000);
+
+        // Carga inicial
+        document.addEventListener('DOMContentLoaded', function() {
+            cargarCarpetas();
+            actualizarEstadoProceso();
+        });
+    </script>
+</body>
+</html>

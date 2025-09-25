@@ -4,6 +4,7 @@
   "description": "Microservicio para envío automático de archivos RIPS al Ministerio de Salud de Colombia",
   "main": "index.js",
   "scripts": {
+    "dashboard": "node src/services/dashboard-server.js",
     "start": "node index.js",
     "dev": "nodemon index.js",
     "manual": "cross-env MODO_EJECUCION=manual node index.js",
